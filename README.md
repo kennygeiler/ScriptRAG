@@ -1,99 +1,93 @@
-# Narrative MRI 🎬
+# Narrative MRI
 
-> "Stop guessing if your script works. Measure its physics."
+> Stop guessing if your script works. Measure its physics.
 
-**Narrative MRI** is a GraphRAG-powered diagnostic tool for screenwriters and producers. It transforms flat scripts into a living, queryable knowledge graph to identify structural **Dead Air**, protagonist **passivity**, and un-fired **Chekhov’s Guns**.
+**Narrative MRI** is a GraphRAG-style pipeline for screenplays: Final Draft → validated JSON → **Neo4j** → a **Streamlit** dashboard. It surfaces structural signals—**pacing (momentum)**, **character agency over acts**, and **long-horizon props**—with evidence on edges as verbatim **`source_quote`** text.
 
-For **roadmap, metric definitions, dashboard map, and AI working rules**, see [`strategy.md`](strategy.md) in the repo root (update it when milestones change).
+**Authoritative detail:** [`strategy.md`](strategy.md) (architecture, metric definitions, AI rules). **Compact snapshot:** [`MEMORY.md`](MEMORY.md). **For coding agents:** [`AGENTS.md`](AGENTS.md).
 
-## The Philosophy
+**Remote:** [github.com/kennygeiler/GraphRAG](https://github.com/kennygeiler/GraphRAG) (private by default—adjust visibility in GitHub settings if you open-source it).
 
-Most script coverage is subjective. **Narrative MRI** is objective. By treating a screenplay as a series of mathematical relationships between Characters, Locations, and Props, we can visualize the **metabolic rate** of a story.
+## Philosophy
 
-- **Friction vs. exposition:** We calculate the **heat** of every scene. If characters aren’t in meaningful conflict (relative to who’s in frame), the scene is flagged as dead air.
-- **The agency gauge:** We track the **passivity index** of your cast. If your protagonist isn’t driving the plot, the graph will show it.
-- **Prop utility:** We filter out set dressing to track only the items that earn narrative load (USES / CONFLICTS touches).
+Coverage is often subjective. Here, a screenplay is modeled as **typed relationships** among characters, locations, and props per scene. Metrics are reproducible from the graph, not from vibes alone.
 
-## The Stack
+## Stack
 
-- **Intelligence:** Claude 3.5 Sonnet / Haiku via [`instructor`](https://github.com/jxnl/instructor)
-- **Storage:** [Neo4j](https://neo4j.com/) (graph database)
-- **Engine:** Python 3.12 + [`uv`](https://github.com/astral-sh/uv)
-- **Interface:** [Streamlit](https://streamlit.io/) + [Plotly](https://plotly.com/python/)
+| Layer | Choice |
+|--------|--------|
+| Extraction | Claude via [`instructor`](https://github.com/jxnl/instructor) + Pydantic (`schema.py`) |
+| Graph | [Neo4j](https://neo4j.com/) |
+| Runtime | Python 3.12 + [`uv`](https://github.com/astral-sh/uv) |
+| UI | [Streamlit](https://streamlit.io/) + [Plotly](https://plotly.com/python/) |
 
-## Current Capabilities
+## Dashboard: Narrative Timeline Analyzer (`app.py`)
 
-- [x] **Validated parsing:** Verbatim `source_quote` on narrative edges (Pydantic + Instructor).
-- [x] **Agency analytics:** Character passivity from Neo4j (`metrics.py` / dashboard).
-- [x] **Structural heartbeat:** Scene-by-scene friction mapping (heat vs. boredom threshold).
-- [x] **Neo4j loader & dashboard:** Ingest `validated_graph.json`, explore in Streamlit.
-- [ ] **Production complexity:** (Planned) Cost-per-scene estimation from graph density.
+Wide-layout Streamlit app. Main analytics live under **Narrative Timeline**:
+
+1. **Narrative momentum** — Per-scene **heat** = in-scene `CONFLICTS_WITH / (INTERACTS_WITH + CONFLICTS_WITH)` among co-present entities; **3-scene rolling average**; area fill; dashed markers at **Act 2 / Act 3** starts (derived from Neo4j).
+2. **The Payoff Matrix (Long-Term Plot Devices)** — Props whose first on-screen intro and last narrative use are separated by more than **10** scene numbers (filters short-loop noise).
+3. **Power shift** — **Passivity index** (in-degree / total degree on `CONFLICTS_WITH` + `USES`, windowed by act) for the **top five** characters by interaction volume. **Act boundaries** are **equal thirds** of the `min..max(:Event.number)` span in the database (script-agnostic). **`st.warning`** if the protagonist (**Zev**, configurable in code) has **higher** passivity in Act 3 than in Act 1.
+
+Other tabs: **Human-in-the-Loop** (`hitl.py`), **Ask the graph** (`agent.py`), **Pipeline Engine** (nuke / upload `.fdx` / staged `uv run` pipeline).
 
 ## Prerequisites
 
-- [uv](https://github.com/astral-sh/uv) installed (`uv sync` installs from `pyproject.toml` / `uv.lock`; `requirements.txt` is only a short pointer)
-- A running **Neo4j** instance (local or Aura)
-- An **Anthropic** API key
+- `uv` — `uv sync` installs from `pyproject.toml` / `uv.lock` (`requirements.txt` is ancillary).
+- Running **Neo4j**
+- **Anthropic** API key (ingest)
 
-Create a `.env` in the project root with your real values. **Do not commit** `.env` (it contains secrets).
+Copy **`.env.example`** → **`.env`** and fill in secrets. **Never commit `.env`.**
 
 ```env
 ANTHROPIC_API_KEY=sk-ant-...
 NEO4J_URI=neo4j://localhost:7687
 NEO4J_USER=neo4j
-NEO4J_PASSWORD=your-password
+NEO4J_PASSWORD=...
 ```
+
+Optional (tracing / QA): `LANGCHAIN_*` variables as in `.env.example`.
 
 ## Usage
 
 ```bash
-# Install dependencies
 uv sync
 
-# 1) Parse Final Draft → raw_scenes.json (default output path: ./raw_scenes.json)
+# 1) Parse Final Draft → raw_scenes.json
 uv run python parser.py screenplay.fdx
 
-# 2) Generate the master lexicon (characters & locations) from raw scenes JSON
+# 2) Master lexicon from raw scenes
 uv run python lexicon.py raw_scenes.json
 
-# 3) Extract per-scene graphs with lexicon constraints → validated_graph.json
-#    Saves after each successful scene by default. If ingest stops early, run again (or
-#    `ingest.py --resume`) to continue from disk without redoing finished scene numbers.
-#    `ingest.py --fresh` deletes the file first for a full re-extract.
+# 3) Per-scene LLM extract → validated_graph.json (checkpointed; re-run to resume)
 uv run python ingest.py
 
-# 4) Wipe & load Neo4j from validated_graph.json (default path)
+# 4) Load Neo4j from validated_graph.json
 uv run python neo4j_loader.py
 
-# 5) Launch the MRI dashboard
+# 5) Dashboard
 uv run streamlit run app.py
 ```
 
-**Optional CLI tools**
+**Optional CLI** (`metrics.py`, `reconcile.py`) — see `strategy.md` §4 and `--help` on each script.
 
-```bash
-# Narrative metrics in the terminal (passivity, heat, Chekhov props)
-uv run python metrics.py --heat --props --character alan
+## Project layout
 
-# Fuzzy duplicate characters + ghost-node audit + interactive merge
-uv run python reconcile.py --dry-run
-```
-
-## Project layout (high level)
-
-| Module | Role |
-|--------|------|
+| Path | Role |
+|------|------|
 | `parser.py` | `.fdx` → `raw_scenes.json` |
-| `lexicon.py` | Master cast/location list → `master_lexicon.json` |
+| `lexicon.py` | `master_lexicon.json` / `lexicon.json` |
 | `ingest.py` | Scene graphs → `validated_graph.json` |
-| `neo4j_loader.py` | JSON → Neo4j (`Character`, `Location`, `Prop`, `Event`, `IN_SCENE`, narrative rels) |
-| `pipeline_state.json` | Written by `ingest.py` / loader — progress metadata (see Engine Room status) |
-| `metrics.py` | Passivity, heat, load-bearing props |
-| `app.py` | Streamlit + Plotly producer dashboard |
-| `reconcile.py` | Entity reconciliation helpers |
-| `agent.py` | LangChain Cypher QA (“Ask the graph”) |
-| `schema.py` | Pydantic graph shapes |
+| `neo4j_loader.py` | JSON → Neo4j |
+| `metrics.py` | Cypher analytics (momentum, payoff props, passivity, heat, etc.) |
+| `app.py` | Streamlit application |
+| `hitl.py` | Draft vs Gold scene review |
+| `agent.py` | LangChain Cypher QA |
+| `schema.py` | Pydantic graph contract |
+| `strategy.md` | Full project brain |
+| `MEMORY.md` | Short memory snapshot |
+| `AGENTS.md` | Instructions for AI assistants |
 
 ## License
 
-Add your license here (e.g. MIT) when you publish the repo.
+Add a license (e.g. MIT) when you publish the repo.

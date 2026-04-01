@@ -38,7 +38,7 @@ We do not infer vibes from prose alone. We map **narrative physics**: who acts o
 
 **Schema contract:** `schema.py` — Pydantic models for `SceneGraph`, nodes, and `Relationship` (proof quote required).
 
-**Secrets / env:** `.env` — `ANTHROPIC_API_KEY`, `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD`. Never commit secrets.
+**Secrets / env:** `.env` — `ANTHROPIC_API_KEY`, `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD`. Optional LangSmith vars for tracing. Never commit secrets; use **`.env.example`** as a template.
 
 ---
 
@@ -53,7 +53,7 @@ Use this as a checklist; flip items when reality changes.
 - [x] **Neo4j loader** (merge events, entities, `IN_SCENE`, narrative edges with quotes).
 - [x] **Metrics layer** (`metrics.py`): passivity (global and windowed), scene heat, load-bearing props, possessed-unused, Act I→III Chekhov-style audit, scene inspector quotes, character `IN_SCENE` counts.
 - [x] **Scene heat refinement:** numerator = **distinct unordered conflict pairs** in-scene (not raw `CONFLICTS_WITH` edge count) to reduce dialogue-bloat skew.
-- [x] **Streamlit dashboard** (`app.py`): **Narrative Radiologist** with nested tabs — **Story Analytics** (radiology report, pacing heartbeat, slump engine), **Character Arcs** (ensemble passivity chart with **≥5 scenes** filter, power-cross trajectory, Act I vs III takeaway), **Production Logistics** (Chekhov table + audit, entity health, scene inspector, director notes persistence).
+- [x] **Streamlit dashboard** (`app.py`): **Narrative Timeline Analyzer** — **momentum** (per-scene heat `CONFLICTS_WITH/(INTERACTS_WITH+CONFLICTS_WITH)` + 3-scene rolling mean, act-break vlines), **Payoff Matrix** (long-horizon props with **>10** scene gap intro→last use), **power shift** (top 5 characters by interaction count, passivity by **equal-third** act buckets from `get_script_act_bounds`), **protagonist regression** warning (Act 3 passivity **>** Act 1 for configurable `PROTAGONIST_ID`). Graceful empty states when Neo4j returns no rows.
 - [x] **Human-in-the-loop** tab for non-VERIFIED scenes (`hitl.py`).
 - [x] **Ask the graph** chat path (`agent.py`).
 - [x] **Pipeline Engine** tab: Neo4j + JSON **nuke**, `.fdx` upload → `target_script.fdx`, four-stage `uv run` chain with streamed logs.
@@ -62,8 +62,8 @@ Use this as a checklist; flip items when reality changes.
 
 ### In progress / known gaps
 
-- [ ] **Empty-graph hardening:** Dashboard must never assume `pass_df` has an `id` column when `pass_rows` is empty; guard all chart paths when Neo4j has no `Character` / `Event` data (point users to **Pipeline Engine**).
-- [ ] **Full script-agnostic UI:** Replace hardcoded lead/antagonist IDs in trajectory and takeaways with dynamic “key players” or configurable IDs (`metrics.py` / `app.py`).
+- [x] **Timeline empty states:** Narrative Timeline charts guard empty Cypher results and missing columns.
+- [ ] **Full script-agnostic UI:** Protagonist ID for regression warning is still a constant in `app.py` (`PROTAGONIST_ID`); promote to env or project config when needed.
 
 ### Explicitly not started (roadmap)
 
@@ -78,26 +78,31 @@ These definitions are what code should implement; if code diverges, fix code or 
 
 | Metric | Definition |
 |--------|------------|
-| **Passivity** | For a character: `in_degree / (in_degree + out_degree)` on **CONFLICTS_WITH** and **USES** (including incoming **USES** on **POSSESSES**’d props). `None` if no qualifying edges. |
-| **Scene heat** | For an `Event`: `(# of **unique unordered** entity pairs with ≥1 in-scene CONFLICTS_WITH between them, either direction) / (count of IN_SCENE links into that Event)`. Undefined heat when denominator is 0. |
-| **Slump alert** | From heat series: **≥3 consecutive** scene numbers (with defined heat) each **&lt; 0.1** (`SLUMP_HEAT_THRESHOLD`, `SLUMP_MIN_SCENES` in `app.py`). |
-| **Load-bearing props** | Props with **≥2** total **USES** or **CONFLICTS_WITH** touches (after set-dressing filter in `metrics.py`). Threshold may be tuned toward **relative density** per dataset over time. |
-| **Act I / III** | Scene thirds from `max(Event.number)` (see `_script_act_bounds` / Cypher mirrors in `metrics.py`). |
-| **Arc takeaway** | Compare lead passivity Act I vs Act III windows; flag if drop **&lt; 20%** from Act I baseline (`ACT_PASSIVITY_DROP_MIN`). |
-| **Agency bar chart filter** | Only characters with **`IN_SCENE` count ≥ 5** (`AGENCY_CHART_MIN_IN_SCENE`) to reduce bit-part noise. |
+| **Passivity** | For a character: `in_degree / (in_degree + out_degree)` on **CONFLICTS_WITH** and **USES** (including incoming **USES** on **POSSESSES**’d props). `None` if no qualifying edges. Windowed variants restrict edges to scenes in `[lo, hi]` (see `get_passivity_in_scene_window`). |
+| **Scene heat** | For an `Event`: `(# of **unique unordered** entity pairs with ≥1 in-scene CONFLICTS_WITH between them, either direction) / (count of IN_SCENE links into that Event)`. Undefined heat when denominator is 0. Used in CLI (`metrics.py --heat`) and diagnostics — **not** the same formula as **narrative momentum** below. |
+| **Narrative momentum (dashboard)** | Per `Event`: `CONFLICTS_WITH / (INTERACTS_WITH + CONFLICTS_WITH)` counting in-scene typed edges among co-present entities (`get_narrative_momentum_by_scene`). UI applies a **3-scene** rolling mean (`ROLLING_SCENES` in `app.py`). |
+| **Payoff / long-arc props** | `get_payoff_prop_timelines`: first intro vs last `USES`/`CONFLICTS_WITH`; include if `(last − first) > PAYOFF_MIN_SCENE_GAP` (default **10**). |
+| **Power-shift cohort** | Top **K** characters by total **CONFLICTS_WITH + USES + INTERACTS_WITH** edge count, both directions (`get_top_characters_by_interaction_count`). |
+| **Act buckets (dashboard)** | **Equal thirds** of inclusive scene span `min(:Event.number)…max(:Event.number)` (`get_script_act_bounds` in `metrics.py`). Vertical markers on momentum chart at first scene of Act 2 and Act 3 when structurally distinct. |
+| **Protagonist regression (UI)** | If `PROTAGONIST_ID` passivity in Act 3 **>** Act 1 → `st.warning` (fatal arc / regressing). |
+| **Load-bearing props** | Props with **≥2** total **USES** or **CONFLICTS_WITH** touches (after set-dressing filter in `metrics.py`). Used in older Chekhov-style CLI audits, not the Payoff Matrix chart. |
 
 ---
 
 ## 5. Dashboard map (`app.py`)
 
+**Layout:** `st.set_page_config(layout="wide")`.
+
 **Top-level tabs**
 
-1. **Narrative Radiologist** — Nested **Story Analytics | Character Arcs | Production Logistics** (Legend → Data → Takeaway pattern where applicable).
-2. **Human-in-the-Loop validation** — Draft vs Gold, edit nodes/edges, verify scenes.
-3. **Ask the graph** — Narrative QA over the graph.
+1. **Narrative Timeline** — **Momentum** (Plotly line + area, dashed act-boundary vlines from `get_script_act_bounds`), **Payoff Matrix** (horizontal span bars for long-gap props), **Power shift** (multi-line passivity across three act buckets for top interaction characters), protagonist regression warning.
+2. **Human-in-the-Loop validation** — Draft vs Gold, edit nodes/edges, verify scenes (`hitl.py`).
+3. **Ask the graph** — Narrative QA / Cypher path (`agent.py`).
 4. **Pipeline Engine** — Wipe DB + pipeline JSONs, upload `.fdx`, run staged extraction with live logs.
 
-**Director notes:** Stored on `:MRIMeta` and mirrored on the first `:Event` (`producer_notes.py`).
+**Cache:** Timeline queries use `@st.cache_data` keyed in part on pipeline artifact mtimes (`filesystem_snapshot` pattern in `app.py`); “Reload metrics” clears cache.
+
+**Legacy:** `producer_notes.py` / `:MRIMeta` may still exist in DB from earlier builds; not central to the current Timeline-first UI.
 
 ---
 
@@ -107,7 +112,7 @@ These definitions are what code should implement; if code diverges, fix code or 
 2. **Generalization:** Dynamic leads / antagonists for charts and takeaways; optional project config (YAML or env) for role IDs.
 3. **Reconciliation at scale:** Expand `reconcile.py` workflows from the dashboard and CLI; keep merges safe (APOC or manual rewire patterns already referenced in UI).
 4. **Producer overlays:** Phase 3 complexity metrics without diluting structural truth.
-5. **Documentation hygiene:** After each milestone, update **`strategy.md`** (this file), then trim **`README.md`** / **`.cursorrules`** if they duplicate—avoid three divergent truths.
+5. **Documentation hygiene:** After each milestone, update **`strategy.md`** (this file), then sync **`README.md`**, **`MEMORY.md`**, **`AGENTS.md`**, and **`.cursorrules`** so onboarding stays single-source (`strategy.md`) with short mirrors.
 
 ---
 
@@ -137,7 +142,7 @@ Follow these in every change unless the user explicitly overrides.
 ### When the user pivots or ships a milestone
 
 11. **Update `strategy.md`** — Adjust §3 checkboxes, §4 if metrics change, §5–§6 if UI or roadmap changes, §7 if new non-negotiables appear.
-12. **Optionally sync `.cursorrules`** with a one-paragraph summary so Cursor’s auto-loaded rules stay aligned (full detail stays here).
+12. **Sync `.cursorrules` and `MEMORY.md`** with dashboard/metric changes (full detail stays here).
 
 ---
 
@@ -146,6 +151,8 @@ Follow these in every change unless the user explicitly overrides.
 | Path | Role |
 |------|------|
 | `strategy.md` | **This file** — project brain |
+| `MEMORY.md` | Compact snapshot for humans & AI |
+| `AGENTS.md` | Onboarding checklist for coding agents |
 | `.cursorrules` | Cursor-local concise rules + pointer here |
 | `README.md` | Human onboarding & commands |
 | `schema.py` | Pydantic graph contract |

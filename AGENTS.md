@@ -1,0 +1,28 @@
+# AGENTS.md — working in this repository
+
+## Read first
+
+1. **`strategy.md`** — Architecture, metric definitions, dashboard behavior, strict rules for changes.
+2. **`MEMORY.md`** — Short current-state snapshot (tabs, metrics, pipeline).
+3. **`.cursorrules`** — Cursor-local summary; should stay consistent with `strategy.md`.
+
+## Conventions
+
+- **Package manager:** `uv` — `uv sync`, `uv run python …`, `uv run streamlit run app.py`.
+- **Secrets:** Never commit `.env`. Use `.env.example` for variable names only.
+- **Cypher:** Parameterized queries only; no string-built queries from user input.
+- **Evidence:** Narrative edges in extracted data must carry verbatim `source_quote` from the script.
+- **Scope:** Minimal diffs; match existing style in `app.py`, `metrics.py`, `neo4j_loader.py`.
+
+## High-signal files
+
+| Area | Files |
+|------|--------|
+| Graph load | `neo4j_loader.py`, `schema.py` |
+| Analytics | `metrics.py` |
+| UI | `app.py`, `hitl.py`, `agent.py` |
+| Extract | `ingest.py`, `lexicon.py`, `parser.py` |
+
+## When you finish a milestone
+
+Update **`strategy.md`** (§3 progress, §4–§5 if metrics or UI changed), then **`MEMORY.md`** / **`.cursorrules`** if the snapshot drifted.
