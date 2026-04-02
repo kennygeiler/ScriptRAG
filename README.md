@@ -27,6 +27,7 @@ full detail lives in [`strategy.md`](strategy.md). quick context: [`MEMORY.md`](
 
 - [how it works](#how-it-works)
 - [the pipeline](#the-pipeline)
+- [the editor agent](#the-editor-agent-self-healing-extraction)
 - [dashboard](#dashboard)
 - [quick start](#quick-start)
 - [environment variables](#environment-variables)
@@ -42,7 +43,7 @@ full detail lives in [`strategy.md`](strategy.md). quick context: [`MEMORY.md`](
 |------|--------|----------------|
 | **parse** | `parser.py` | `.fdx` xml → `raw_scenes.json`. **no llm.** |
 | **lexicon** | `lexicon.py` | whole script text → claude + pydantic → `master_lexicon.json` (stable `snake_case` ids). |
-| **ingest** | `ingest.py` + `schema.py` | **per scene**: claude + **instructor** → `SceneGraph`; self-healing loop (extract → validate → fix up to 3 retries); edges need `source_id`, `target_id`, `type`, **`source_quote`**. |
+| **ingest** | `ingest.py` + `schema.py` | **per scene**: claude + **instructor** → `SceneGraph`; two-phase self-healing (deterministic rules → llm auditors); edges need `source_id`, `target_id`, `type`, **`source_quote`**. |
 | **load** | `neo4j_loader.py` | merge `:Character` `:Location` `:Prop` `:Event`, `IN_SCENE`, narrative rels. |
 | **analyze** | `metrics.py` | parameterized cypher → momentum, payoff props, passivity windows, etc. |
 | **ui** | `app.py` | streamlit + plotly. four tabs: pipeline, editor agent, dashboard, investigate. |
@@ -66,11 +67,30 @@ neo4j does **not** read english. it stores **nodes and edges**. streamlit asks *
                       └────────┬────────┘
                                │
                                ▼
-                      ┌─────────────────┐
-                      │  INGEST         │◀── claude + instructor
-                      │  (per scene)    │     extract → validate → fix
-                      │  Editor Agent   │     self-healing loop
-                      └────────┬────────┘
+                      ┌─────────────────────────────────────┐
+                      │  INGEST (per scene)                 │
+                      │                                     │
+                      │  ┌───────────┐                      │
+                      │  │ EXTRACT   │◀── claude+instructor │
+                      │  └─────┬─────┘                      │
+                      │        ▼                             │
+                      │  ┌───────────┐    ┌────────┐        │
+                      │  │ VALIDATE  │───▶│ FIXER  │──┐     │
+                      │  │ 7 rules   │◀───┘        │  │     │
+                      │  └─────┬─────┘   (×3 max)  │  │     │
+                      │        │ pass              ◀──┘     │
+                      │        ▼                             │
+                      │  ┌───────────────────────┐          │
+                      │  │ LLM AUDITORS (×3)     │          │
+                      │  │ quote fidelity         │          │
+                      │  │ completeness           │          │
+                      │  │ attribution            │          │
+                      │  └─────┬─────────────────┘          │
+                      │        │ errors? → fixer (×2 max)   │
+                      │        │ warnings → human review    │
+                      │        ▼                             │
+                      │  validated scene graph               │
+                      └────────┬────────────────────────────┘
                                │
                                ▼
                validated_graph.json (checkpointed)
@@ -98,7 +118,37 @@ neo4j does **not** read english. it stores **nodes and edges**. streamlit asks *
 
 - **`parser.py` never calls an api.** only **`lexicon.py`** and **`ingest.py`** (and **`agent.py`** for chat) use the model.
 - pydantic + instructor **enforce** edge shape; bad structured output **retries or fails**—it doesn't silently save junk.
-- the **editor agent** (self-healing loop in `etl_core`) validates every extraction against pydantic schemas and deterministic business rules. when validation fails, an llm fixer rewrites the output—and you see every correction in the ui.
+- the **editor agent** doesn't just check schemas—it runs a **two-phase validation** on every scene. see below.
+
+### the editor agent (self-healing extraction)
+
+every scene goes through two layers of validation before it's accepted. the pipeline keeps looping until the graph is clean or retries are exhausted—you see every correction in the ui.
+
+**phase 1 — deterministic rules** (zero llm cost, instant):
+
+| check | type | what it catches |
+|-------|------|-----------------|
+| duplicate `LOCATED_IN` | error | character placed in two locations simultaneously |
+| dangling edge ids | error | relationship references a node that doesn't exist |
+| hallucinated quote | error | `source_quote` not found in the raw scene text (case-insensitive, whitespace-normalized) |
+| self-referencing edge | error | `source_id == target_id` |
+| relationship-kind validity | error | `LOCATED_IN` → location, `POSSESSES` → character→prop, `USES` → character source |
+| lexicon compliance | warning | character/location id not in the master lexicon—flagged for human review |
+| duplicate relationships | warning | same `(source, target, type)` tuple appears multiple times in one scene |
+
+errors trigger the **fixer** (up to 3 retries). warnings are saved for human review but don't block the pipeline.
+
+**phase 2 — llm auditor agents** (3 specialized claude calls per scene):
+
+| agent | what it does |
+|-------|-------------|
+| **quote fidelity** | verifies that each `source_quote` actually *supports* the claimed relationship type—catches misclassification (e.g. "alan sits next to zev" tagged as `CONFLICTS_WITH`) |
+| **completeness** | reads the raw scene text and compares it to the extracted graph—finds significant interactions, conflicts, or prop uses the extractor missed |
+| **attribution** | verifies `source_id` and `target_id` are the correct entities for the action described in each quote—catches swapped source/target |
+
+audit errors trigger the fixer (up to 2 retries, separate from phase 1). audit warnings go to the editor agent tab for human review.
+
+**cost:** ~$0.03/scene worst case (extraction + fixer + 3 auditors + audit fixer). deterministic checks are free. for an 86-scene script, roughly **$2.50 total**.
 
 ## dashboard
 
@@ -107,7 +157,7 @@ wide-layout streamlit. four tabs:
 | tab | what it is |
 |-----|------------|
 | **pipeline** | upload `.fdx`, run full extraction in-process with live per-scene progress. the editor agent monitors every scene: shows pass/fix/fail status, running token + cost totals. |
-| **editor agent** | review corrections made by the ai fixer. before/after json diffs for every scene where the editor intervened. "approve & load to neo4j" when satisfied. |
+| **editor agent** | **corrections**: auto-fixed errors with before/after json diffs (from both deterministic and audit fixer). **warnings**: lexicon drift, duplicate rels, auditor flags for human review. summary metrics at top. "approve & load to neo4j" when satisfied. |
 | **dashboard** | **narrative momentum** (per-scene heat = `CONFLICTS_WITH / (INTERACTS_WITH + CONFLICTS_WITH)`, 3-scene rolling mean, dashed act boundaries), **payoff matrix** (long-horizon props > 10 scene gap), **power shift** (passivity index for top 5 characters by act). x/n scenes banner. `st.warning` if protagonist regresses. |
 | **investigate** | ask questions about the script's structure via natural language → cypher (`agent.py`). |
 
@@ -206,12 +256,13 @@ GraphRAG/
 │   ├── state.py               #   langgraph ETLState (tokens, cost, audit)
 │   ├── telemetry.py           #   anthropic pricing + accumulate_usage
 │   ├── errors.py              #   MaxRetriesError
-│   └── graph_engine.py        #   langgraph: extract → validate → fix loop
+│   └── graph_engine.py        #   langgraph: extract → validate → fix → audit → audit_fix
 ├── domains/
 │   └── screenplay/            # screenplay-specific domain plug-in
 │       ├── schemas.py         #   re-exports SceneGraph, Relationship
-│       ├── rules.py           #   deterministic validation (no AI)
-│       └── adapter.py         #   DomainBundle wiring LLM + rules
+│       ├── rules.py           #   7 deterministic checks (no AI)
+│       ├── auditors.py        #   3 LLM auditor agents (quote fidelity, completeness, attribution)
+│       └── adapter.py         #   DomainBundle wiring LLM + rules + auditors
 ├── parser.py                  # .fdx → raw_scenes.json (xml only)
 ├── lexicon.py                 # claude → master_lexicon.json
 ├── ingest.py                  # per-scene extraction (exports extract_scenes generator)
