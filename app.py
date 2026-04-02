@@ -35,9 +35,21 @@ PROTAGONIST_ID = "zev"
 
 _PROJECT_ROOT = Path(__file__).resolve().parent
 _TARGET_FDX = _PROJECT_ROOT / "target_script.fdx"
-PIPELINE_EFFICIENCY_LOG = _PROJECT_ROOT / "pipeline_efficiency_log.json"
 # Bump when you ship pipeline/agent optimizations (tracked in efficiency tab).
 AGENT_OPTIMIZATION_VERSION = 0
+
+
+def _pipeline_efficiency_log_path() -> Path:
+    """Prefer PERSISTENT_DATA_DIR (e.g. Render disk at /var/data) so logs survive redeploys."""
+    raw = os.environ.get("PERSISTENT_DATA_DIR", "").strip()
+    if raw:
+        base = Path(raw)
+        try:
+            base.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass
+        return base / "pipeline_efficiency_log.json"
+    return _PROJECT_ROOT / "pipeline_efficiency_log.json"
 _PIPELINE_JSON_NAMES = (
     "raw_scenes.json",
     "master_lexicon.json",
@@ -54,19 +66,22 @@ _PIPELINE_ENABLED = not _env_truthy("DISABLE_PIPELINE")
 
 
 def _load_efficiency_log() -> list[dict[str, Any]]:
-    if not PIPELINE_EFFICIENCY_LOG.is_file():
+    path = _pipeline_efficiency_log_path()
+    if not path.is_file():
         return []
     try:
-        raw = json.loads(PIPELINE_EFFICIENCY_LOG.read_text(encoding="utf-8"))
+        raw = json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
         return []
     return raw if isinstance(raw, list) else []
 
 
 def _append_efficiency_run(entry: dict[str, Any]) -> None:
+    path = _pipeline_efficiency_log_path()
     rows = _load_efficiency_log()
     rows.append(entry)
-    PIPELINE_EFFICIENCY_LOG.write_text(
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
         json.dumps(rows, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
@@ -849,9 +864,11 @@ with tab_editor:
 
 with tab_efficiency:
     st.header("Pipeline Efficiency Tracking")
+    _log_path = _pipeline_efficiency_log_path()
     st.caption(
-        "Each completed pipeline run is appended to `pipeline_efficiency_log.json` "
-        f"(optimization version **{AGENT_OPTIMIZATION_VERSION}** — bump `AGENT_OPTIMIZATION_VERSION` in `app.py` when you ship improvements)."
+        f"Each completed pipeline run is appended to **`{_log_path.name}`** "
+        f"under `{_log_path.parent}` (set **`PERSISTENT_DATA_DIR`** on Render with a disk so history survives redeploys). "
+        f"Optimization version **{AGENT_OPTIMIZATION_VERSION}** — bump `AGENT_OPTIMIZATION_VERSION` in `app.py` when you ship improvements."
     )
     rows = _load_efficiency_log()
     if not rows:

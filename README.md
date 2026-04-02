@@ -221,6 +221,8 @@ there is **no** single button that provisions **both** neo4j aura and the app. a
 | 2 | push repo → [render](https://dashboard.render.com) **new → blueprint** → select repo → [`render.yaml`](render.yaml) → set secret `NEO4J_*` + `ANTHROPIC_API_KEY`. |
 | 3 | open the app, upload your `.fdx`, run the pipeline, approve, explore. |
 
+the blueprint uses **starter** + a **1 gb persistent disk** at `/var/data` so **pipeline efficiency** logs survive redeploys (`PERSISTENT_DATA_DIR=/var/data`). to use **free** tier instead, edit `render.yaml`: set `plan: free` and remove the `disk` block (logs then live only on ephemeral disk).
+
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy)
 
 ### docker (local or any host)
@@ -230,7 +232,7 @@ docker build -t scriptrag .
 docker run --rm -p 8501:8501 --env-file .env scriptrag
 ```
 
-`Dockerfile` respects **`PORT`** for render/fly/railway.
+`Dockerfile` respects **`PORT`** for render/fly/railway. `docker compose` mounts a named volume at `/var/data` for **`PERSISTENT_DATA_DIR`** (efficiency log); plain `docker run` without a volume keeps logs under `/app` until the container is removed.
 
 ### one machine: neo4j + app
 

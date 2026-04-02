@@ -1,15 +1,24 @@
 # Render Blueprint: https://render.com/docs/blueprint-spec
 # Dashboard: New → Blueprint → connect this repo → set secret env vars when prompted.
+#
+# Persistent disk: keeps pipeline_efficiency_log.json across deploys. Requires a paid
+# instance type (Starter+). Free tier cannot attach disks — remove `disk` and use `plan: free`.
 
 services:
   - type: web
     name: scriptrag
     runtime: docker
     dockerfilePath: ./Dockerfile
-    # Free tier spins down; use starter for always-on demos.
-    plan: free
+    # Starter required for persistent disk (not available on Free).
+    plan: starter
     healthCheckPath: /_stcore/health
+    disk:
+      name: scriptrag-data
+      mountPath: /var/data
+      sizeGB: 1
     envVars:
+      - key: PERSISTENT_DATA_DIR
+        value: /var/data
       # Remove or set to 0 to enable in-browser pipeline; set to 1 for read-only dashboard.
       # - key: DISABLE_PIPELINE
       #   value: "1"

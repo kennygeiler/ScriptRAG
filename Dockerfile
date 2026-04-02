@@ -22,14 +22,17 @@ COPY . .
 ENV PATH="/app/.venv/bin:$PATH"
 
 RUN useradd --create-home --shell /bin/bash --uid 1000 app \
-    && chown -R app:app /app
-USER app
+    && chown -R app:app /app \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends gosu \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
 
 # Render / Fly / Railway set PORT; default 8501 for local docker run
 EXPOSE 8501
 
-SHELL ["/bin/sh", "-c"]
-CMD exec streamlit run app.py \
-  --server.address=0.0.0.0 \
-  --server.port="${PORT:-8501}" \
-  --server.headless=true
+# Start as root so entrypoint can chown PERSISTENT_DATA_DIR volumes; then drop to app.
+USER root
+ENTRYPOINT ["/docker-entrypoint.sh"]

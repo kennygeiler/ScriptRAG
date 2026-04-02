@@ -17,6 +17,10 @@ services:
     environment:
       # Set to 1 for read-only dashboard; remove or set to 0 to enable in-browser pipeline.
       DISABLE_PIPELINE: "${DISABLE_PIPELINE:-0}"
+      # Pipeline efficiency log + other durable app data (survives container restarts).
+      PERSISTENT_DATA_DIR: /var/data
+    volumes:
+      - scriptrag_persistent:/var/data
     # depends_on:
     #   - neo4j
 
@@ -31,5 +35,7 @@ services:
   #   volumes:
   #     - neo4j_data:/data
 
-# volumes:
-#   neo4j_data:
+volumes:
+  scriptrag_persistent:
+  # Uncomment when using the neo4j service above:
+  # neo4j_data:

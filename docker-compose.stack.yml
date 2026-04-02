@@ -40,9 +40,13 @@ services:
       NEO4J_USER: neo4j
       NEO4J_PASSWORD: ${NEO4J_PASSWORD}
       DISABLE_PIPELINE: "0"
+      PERSISTENT_DATA_DIR: /var/data
+    volumes:
+      - scriptrag_persistent:/var/data
     depends_on:
       neo4j:
         condition: service_healthy
 
 volumes:
   neo4j_data:
+  scriptrag_persistent:
