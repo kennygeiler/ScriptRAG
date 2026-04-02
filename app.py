@@ -540,10 +540,13 @@ if _PIPELINE_ENABLED:
                             frac,
                             text=f"Scene {result.index}/{total} — {result.status}",
                         )
-                        scene_log.write(
+                        msg = (
                             f"{status_icon} Scene **{result.scene_number}** "
                             f"({result.heading or 'untitled'}) — {result.status}"
                         )
+                        if result.status == "failed" and result.error:
+                            msg += f"\n\n`{result.error}`"
+                        scene_log.write(msg)
 
                         if result.graph_entry:
                             all_entries.append(result.graph_entry)

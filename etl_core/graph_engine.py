@@ -156,7 +156,22 @@ def _build_auditor(bundle: DomainBundle):
         warnings = list(state.get("warnings") or [])
         gj = state.get("current_json") or {}
 
-        findings, usage = bundle.audit_llm(gj, state.get("raw_text", ""), state.get("system_prompt", ""))
+        try:
+            findings, usage = bundle.audit_llm(gj, state.get("raw_text", ""), state.get("system_prompt", ""))
+        except Exception as exc:
+            audit.append({
+                "ts": _ts(),
+                "doc_id": state.get("doc_id"),
+                "node": "audit",
+                "detail": "llm_audit_error",
+                "error": f"{type(exc).__name__}: {exc}",
+            })
+            warnings.append({
+                "check": "audit_skipped",
+                "severity": "warning",
+                "detail": f"LLM audit failed ({type(exc).__name__}); scene accepted with deterministic checks only.",
+            })
+            return {"audit_trail": audit, "warnings": warnings, "last_error": None}
 
         errors = [f for f in findings if f.get("severity") == "error"]
         warns = [f for f in findings if f.get("severity") != "error"]

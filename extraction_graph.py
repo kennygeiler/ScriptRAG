@@ -52,6 +52,8 @@ def run_extraction_pipeline(
         )
     except MaxRetriesError as e:
         return None, [], str(e), empty_telem, []
+    except Exception as e:
+        return None, [], f"{type(e).__name__}: {e}", empty_telem, []
 
     audit = list(state.get("audit_trail") or [])
     warnings = list(state.get("warnings") or [])
