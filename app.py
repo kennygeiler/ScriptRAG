@@ -470,6 +470,66 @@ if _PIPELINE_ENABLED:
             _TARGET_FDX.write_bytes(_up.getvalue())
             st.success(f"Saved **{_TARGET_FDX.name}** ({len(_up.getvalue()):,} bytes)")
 
+        with st.expander("How does this pipeline thing even work?"):
+            st.markdown("""
+**For each scene in your screenplay, the pipeline runs this loop:**
+
+```
+ ┌─────────────────────────────────────────────────────────────┐
+ │                    PER-SCENE PIPELINE                       │
+ │                                                             │
+ │  ┌───────────┐     Claude + Instructor                     │
+ │  │  EXTRACT  │───▶ reads scene text, returns structured    │
+ │  │  (1 LLM)  │     JSON: nodes + relationships + quotes   │
+ │  └─────┬─────┘                                             │
+ │        ▼                                                    │
+ │  ┌───────────┐     Pure Python, zero cost, instant         │
+ │  │ VALIDATE  │     7 deterministic checks:                 │
+ │  │ (0 LLM)   │       - fabricated quote? (substring match) │
+ │  │           │       - dangling node refs?                 │
+ │  │           │       - self-referencing edges?             │
+ │  │           │       - wrong node types on edges?          │
+ │  │           │       - duplicate LOCATED_IN?               │
+ │  │           │       + lexicon drift (warn only)           │
+ │  │           │       + duplicate relationships (warn only) │
+ │  └─────┬─────┘                                             │
+ │        │                                                    │
+ │   pass │    fail                                            │
+ │        │  ┌──────────┐                                      │
+ │        │  │  FIXER   │  Claude rewrites the broken graph   │
+ │        │  │  (1 LLM) │  with the error message as context  │
+ │        │  └────┬─────┘                                      │
+ │        │       └──────▶ back to VALIDATE (up to 3x)        │
+ │        ▼                                                    │
+ │  ┌───────────────┐  Optional: 3 specialized Claude calls   │
+ │  │ LLM AUDITORS  │  that review the extraction:            │
+ │  │  (3 LLM)      │    - Quote Fidelity: does quote prove  │
+ │  │               │      the relationship type?             │
+ │  │               │    - Completeness: any interactions     │
+ │  │               │      missing from the graph?            │
+ │  │               │    - Attribution: source/target right?  │
+ │  └───────┬───────┘                                         │
+ │          │                                                  │
+ │     pass │    fail -> FIXER again (up to 2x)               │
+ │          ▼                                                  │
+ │   validated scene graph                                     │
+ └─────────────────────────────────────────────────────────────┘
+```
+
+**What "deterministic" means:** checks 1-5 are plain Python -- no AI, no randomness.
+They compare strings and sets. The hallucinated-quote check is the most powerful:
+it does an exact substring search of each `source_quote` against the raw scene text.
+If Claude made up a quote, this catches it every time, for free.
+
+**What the LLM auditors add:** three separate Claude calls that catch *semantic*
+errors the deterministic layer can't (e.g. a quote exists in the text but doesn't
+actually prove the tagged relationship type). These are optional -- uncheck the
+checkbox below to skip them for faster runs.
+
+**Cost:** ~$0.01/scene without auditors, ~$0.03/scene with auditors.
+For an 86-scene script: **~$0.85 fast** or **~$2.50 full audit**.
+""")
+
         col_opt1, col_opt2 = st.columns(2)
         with col_opt1:
             _scene_limit = st.number_input(
