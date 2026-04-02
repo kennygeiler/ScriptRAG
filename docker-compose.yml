@@ -1,4 +1,4 @@
-# Narrative MRI Streamlit + optional env from `.env` (copy from `.env.example`).
+# ScriptRAG Streamlit + optional env from `.env` (copy from `.env.example`).
 #
 # Neo4j: this file does not start a database. Point NEO4J_* at Neo4j Aura (or any Bolt endpoint).
 #
@@ -15,8 +15,8 @@ services:
     env_file:
       - .env
     environment:
-      # In-container pipeline (fdx → ingest) needs uv, writable disk, and long timeouts — off by default.
-      DISABLE_PIPELINE_ENGINE: "${DISABLE_PIPELINE_ENGINE:-1}"
+      # Set to 1 for read-only dashboard; remove or set to 0 to enable in-browser pipeline.
+      DISABLE_PIPELINE: "${DISABLE_PIPELINE:-0}"
     # depends_on:
     #   - neo4j
 

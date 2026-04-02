@@ -1,13 +1,13 @@
 ```
-  _ __   ___ _ __ _ __ ___  ___  _ __ ___
- | '_ \ / _ \ '__| '__/ _ \/ _ \| '_ ` _ \
- | | | |  __/ |  | | |  __/ (_) | | | | | |
- |_| |_|\___|_|  |_|  \___|\___/|_| |_| |_|
-
+  ___         _      _   ___    _    ___
+ / __| __ _ _(_)_ __| |_| _ \  /_\  / __|
+ \__ \/ _| '_| | '_ \  _|   / / _ \| (_ |
+ |___/\__|_| |_| .__/\__|_|_\/_/ \_\\___|
+               |_|
            screenplay structure you can measure.
 ```
 
-> final draft → validated graph → neo4j → streamlit. pacing, agency, and long-horizon props—with **verbatim quotes** on every narrative edge. built for writers who want **physics**, not vibes.
+> upload a screenplay → self-healing AI extraction → human review → neo4j graph → explore with charts and chat. pacing, agency, and long-horizon props—with **verbatim quotes** on every narrative edge. built for writers who want **physics**, not vibes.
 
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/)
 [![Neo4j](https://img.shields.io/badge/Neo4j-graph-008cc1.svg)](https://neo4j.com/)
@@ -17,9 +17,9 @@
 
 ## the problem
 
-coverage is subjective. “does act two drag?” “is my protagonist reactive?” “did we forget the gun?” you get opinions. you don’t get **reproducible** answers tied to the actual script.
+coverage is subjective. "does act two drag?" "is my protagonist reactive?" "did we forget the gun?" you get opinions. you don't get **reproducible** answers tied to the actual script.
 
-**narrative mri** turns a screenplay into a **queryable graph**: who conflicts with whom, in which scene, with **proof text** on the relationship. from that graph you compute **momentum** (rolling friction), **passivity by act**, and **long-arc props**.
+**scriptrag** turns a screenplay into a **queryable graph**: who conflicts with whom, in which scene, with **proof text** on the relationship. from that graph you compute **momentum** (rolling friction), **passivity by act**, and **long-arc props**.
 
 full detail lives in [`strategy.md`](strategy.md). quick context: [`MEMORY.md`](MEMORY.md). agents: [`AGENTS.md`](AGENTS.md).
 
@@ -42,10 +42,10 @@ full detail lives in [`strategy.md`](strategy.md). quick context: [`MEMORY.md`](
 |------|--------|----------------|
 | **parse** | `parser.py` | `.fdx` xml → `raw_scenes.json`. **no llm.** |
 | **lexicon** | `lexicon.py` | whole script text → claude + pydantic → `master_lexicon.json` (stable `snake_case` ids). |
-| **ingest** | `ingest.py` + `schema.py` | **per scene**: claude + **instructor** → `SceneGraph`; edges need `source_id`, `target_id`, `type`, **`source_quote`**. |
+| **ingest** | `ingest.py` + `schema.py` | **per scene**: claude + **instructor** → `SceneGraph`; self-healing loop (extract → validate → fix up to 3 retries); edges need `source_id`, `target_id`, `type`, **`source_quote`**. |
 | **load** | `neo4j_loader.py` | merge `:Character` `:Location` `:Prop` `:Event`, `IN_SCENE`, narrative rels. |
 | **analyze** | `metrics.py` | parameterized cypher → momentum, payoff props, passivity windows, etc. |
-| **ui** | `app.py` | streamlit + plotly. optional: `agent.py` (ask the graph). |
+| **ui** | `app.py` | streamlit + plotly. four tabs: pipeline, editor agent, dashboard, investigate. |
 
 neo4j does **not** read english. it stores **nodes and edges**. streamlit asks **metrics**; metrics ask **cypher**.
 
@@ -68,7 +68,8 @@ neo4j does **not** read english. it stores **nodes and edges**. streamlit asks *
                                ▼
                       ┌─────────────────┐
                       │  INGEST         │◀── claude + instructor
-                      │  (per scene)    │     SceneGraph + quotes
+                      │  (per scene)    │     extract → validate → fix
+                      │  Editor Agent   │     self-healing loop
                       └────────┬────────┘
                                │
                                ▼
@@ -93,22 +94,24 @@ neo4j does **not** read english. it stores **nodes and edges**. streamlit asks *
                       └─────────────────┘
 ```
 
-**important corrections** vs a lazy “ai tags the script” story:
+**important corrections** vs a lazy "ai tags the script" story:
 
 - **`parser.py` never calls an api.** only **`lexicon.py`** and **`ingest.py`** (and **`agent.py`** for chat) use the model.
-- pydantic + instructor **enforce** edge shape; bad structured output **retries or fails**—it doesn’t silently save junk.
+- pydantic + instructor **enforce** edge shape; bad structured output **retries or fails**—it doesn't silently save junk.
+- the **editor agent** (self-healing loop in `etl_core`) validates every extraction against pydantic schemas and deterministic business rules. when validation fails, an llm fixer rewrites the output—and you see every correction in the ui.
 
 ## dashboard
 
-wide-layout streamlit. main analytics: **narrative timeline**.
+wide-layout streamlit. four tabs:
 
-| chart | what it is |
-|-------|------------|
-| **narrative momentum** | per-scene heat = `CONFLICTS_WITH / (INTERACTS_WITH + CONFLICTS_WITH)` among co-present entities; **3-scene rolling mean**; shaded area; dashed act boundaries from **equal thirds** of `min..max(:Event.number)` in the db. |
-| **payoff matrix** | long-horizon props: first intro vs last `USES` / `CONFLICTS_WITH` separated by **> 10** scene numbers (drops noise). |
-| **power shift** | passivity index (in / total on `CONFLICTS_WITH` + `USES` in act windows) for **top 5** characters by interaction volume. **`st.warning`** if configured protagonist (**`zev`** in code) is **more** passive in act 3 than act 1. |
+| tab | what it is |
+|-----|------------|
+| **pipeline** | upload `.fdx`, run full extraction in-process with live per-scene progress. the editor agent monitors every scene: shows pass/fix/fail status, running token + cost totals. |
+| **editor agent** | review corrections made by the ai fixer. before/after json diffs for every scene where the editor intervened. "approve & load to neo4j" when satisfied. |
+| **dashboard** | **narrative momentum** (per-scene heat = `CONFLICTS_WITH / (INTERACTS_WITH + CONFLICTS_WITH)`, 3-scene rolling mean, dashed act boundaries), **payoff matrix** (long-horizon props > 10 scene gap), **power shift** (passivity index for top 5 characters by act). x/n scenes banner. `st.warning` if protagonist regresses. |
+| **investigate** | ask questions about the script's structure via natural language → cypher (`agent.py`). |
 
-other tabs: **engine room** (live self-healing ETL demo — paste text, watch extract→validate→fix with token/cost metrics), **ask the graph** (`agent.py`), **pipeline engine** (local `uv` chain — hidden in cloud when `DISABLE_PIPELINE_ENGINE=1`).
+pipeline tab is hidden when `DISABLE_PIPELINE=1` (read-only deployments).
 
 ## quick start
 
@@ -121,6 +124,14 @@ uv sync
 cp .env.example .env
 # fill ANTHROPIC_API_KEY + NEO4J_* (local desktop, docker, or aura)
 
+uv run streamlit run app.py
+```
+
+open **http://localhost:8501**. upload your `.fdx` in the **pipeline** tab and click **run pipeline**. review corrections in the **editor agent** tab, then approve to load into neo4j.
+
+### cli alternative (headless)
+
+```bash
 uv run python parser.py path/to/script.fdx
 uv run python lexicon.py raw_scenes.json
 uv run python ingest.py
@@ -128,14 +139,7 @@ uv run python neo4j_loader.py
 uv run streamlit run app.py
 ```
 
-open **http://localhost:8501**. ingest **checkpoints**; re-run or `ingest.py --resume` if it stops mid-script.
-
-### optional cli
-
-```bash
-uv run python metrics.py --help
-uv run python reconcile.py --dry-run
-```
+ingest **checkpoints**; re-run or `ingest.py --resume` if it stops mid-script.
 
 ## environment variables
 
@@ -147,8 +151,8 @@ NEO4J_URI=neo4j://localhost:7687    # or neo4j+s://… for aura
 NEO4J_USER=neo4j
 NEO4J_PASSWORD=...
 
-# hosted / docker: hide pipeline tab (subprocess + disk)
-# DISABLE_PIPELINE_ENGINE=1
+# read-only deployment: hide pipeline tab
+# DISABLE_PIPELINE=1
 
 # optional: langsmith
 # LANGCHAIN_API_KEY=...
@@ -164,16 +168,16 @@ there is **no** single button that provisions **both** neo4j aura and the app. a
 | step | action |
 |------|--------|
 | 1 | create [neo4j aura](https://neo4j.com/cloud/) → copy bolt uri + password. |
-| 2 | from a machine with `validated_graph.json`: point `.env` at aura → `uv run python neo4j_loader.py`. |
-| 3 | push repo → [render](https://dashboard.render.com) **new → blueprint** → select repo → [`render.yaml`](render.yaml) → set secret `NEO4J_*` (+ optional `ANTHROPIC_API_KEY`). |
+| 2 | push repo → [render](https://dashboard.render.com) **new → blueprint** → select repo → [`render.yaml`](render.yaml) → set secret `NEO4J_*` + `ANTHROPIC_API_KEY`. |
+| 3 | open the app, upload your `.fdx`, run the pipeline, approve, explore. |
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy)
 
 ### docker (local or any host)
 
 ```bash
-docker build -t narrative-mri .
-docker run --rm -p 8501:8501 --env-file .env -e DISABLE_PIPELINE_ENGINE=1 narrative-mri
+docker build -t scriptrag .
+docker run --rm -p 8501:8501 --env-file .env scriptrag
 ```
 
 `Dockerfile` respects **`PORT`** for render/fly/railway.
@@ -183,8 +187,9 @@ docker run --rm -p 8501:8501 --env-file .env -e DISABLE_PIPELINE_ENGINE=1 narrat
 ```bash
 printf '%s\n' 'NEO4J_PASSWORD=your-secure-password' > .env
 docker compose -f docker-compose.stack.yml up --build -d
-NEO4J_URI=bolt://localhost:7687 NEO4J_USER=neo4j NEO4J_PASSWORD='your-secure-password' uv run python neo4j_loader.py
 ```
+
+open **http://localhost:8501**, upload your screenplay, and run the pipeline from the browser.
 
 ### reviewer handoff
 
@@ -209,14 +214,14 @@ GraphRAG/
 │       └── adapter.py         #   DomainBundle wiring LLM + rules
 ├── parser.py                  # .fdx → raw_scenes.json (xml only)
 ├── lexicon.py                 # claude → master_lexicon.json
-├── ingest.py                  # per-scene extraction → validated_graph.json
+├── ingest.py                  # per-scene extraction (exports extract_scenes generator)
 ├── extraction_llm.py          # anthropic + instructor calls (with usage)
 ├── extraction_graph.py        # thin adapter → etl_core pipeline
-├── neo4j_loader.py            # json → neo4j
+├── neo4j_loader.py            # json → neo4j (exports load_entries)
 ├── schema.py                  # pydantic graph contract
 ├── metrics.py                 # cypher analytics
-├── app.py                     # streamlit: engine room + narrative charts
-├── agent.py                   # nl → cypher (optional)
+├── app.py                     # streamlit: pipeline + editor agent + dashboard + investigate
+├── agent.py                   # nl → cypher
 ├── Dockerfile
 ├── docker-compose.yml         # app → external neo4j / aura
 ├── docker-compose.stack.yml   # neo4j + app on one host

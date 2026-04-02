@@ -4,20 +4,22 @@
 
 ## What this is
 
-Screenplay **GraphRAG**: `.fdx` → JSON → **Neo4j** (`Character`, `Location`, `Prop`, `Event` + `IN_SCENE` + narrative rels with `source_quote`). **Streamlit** app = **Narrative Timeline Analyzer** + ETL engine room + graph chat + pipeline UI.
+**ScriptRAG**: `.fdx` → JSON → **Neo4j** (`Character`, `Location`, `Prop`, `Event` + `IN_SCENE` + narrative rels with `source_quote`). **Streamlit** app = upload screenplay → self-healing extraction with **Editor Agent** monitoring → human review → data exploration.
 
 ## Dashboard tabs (`app.py`)
 
 | Tab | Purpose |
 |-----|---------|
-| **Engine Room** | Live self-healing ETL demo: paste text → extract→validate→fix via `etl_core` LangGraph engine; `st.metric` for tokens/cost; hallucination audit log |
-| **Narrative Timeline** | Momentum line (rolling heat), Payoff Matrix (long-gap props), Power shift (top 5 × 3 acts), protagonist regression warning |
-| **Ask the graph** | Natural language → Cypher (`agent.py`) |
-| **Pipeline Engine** | Wipe DB/JSONs, upload `.fdx`, run parser → lexicon → ingest → loader with logs (hidden on cloud) |
+| **Pipeline** | Upload FDX, run full extraction in-process (parse → lexicon → per-scene extract→validate→fix via `etl_core`); live progress + token/cost metrics |
+| **Editor Agent** | Review corrections (scenes where fixer intervened), before/after diffs; "Approve & Load to Neo4j" button |
+| **Dashboard** | Momentum line (rolling heat), Payoff Matrix (long-gap props), Power shift (top 5 × 3 acts), protagonist regression warning; X/N scenes banner |
+| **Investigate** | Natural language → Cypher (`agent.py`) |
+
+Pipeline tab hidden when `DISABLE_PIPELINE=1` (read-only deployments).
 
 ## Act structure (dynamic)
 
-From Neo4j: **`get_script_act_bounds`** in `metrics.py` — `min(:Event.number)` … `max(:Event.number)` split into **three as-equal-as-possible** buckets. Not fixed to “scene 21 / 65”; changes with whatever script is loaded.
+From Neo4j: **`get_script_act_bounds`** in `metrics.py` — `min(:Event.number)` … `max(:Event.number)` split into **three as-equal-as-possible** buckets. Not fixed to "scene 21 / 65"; changes with whatever script is loaded.
 
 ## Key metrics (current UI)
 
@@ -26,13 +28,15 @@ From Neo4j: **`get_script_act_bounds`** in `metrics.py` — `min(:Event.number)`
 - **Passivity (per act window):** `in / (in + out)` on `CONFLICTS_WITH` + `USES` (incl. incoming `USES` on possessed props), edges attributed to scenes in the act range. **Power shift** uses top **5** characters by **CONFLICTS_WITH + USES + INTERACTS_WITH** count (both directions).
 - **Protagonist check:** If **`zev`** (see `PROTAGONIST_ID` in `app.py`) has **Act 3 passivity > Act 1**, UI shows a regression warning.
 
-## Separate: “scene heat” in `metrics.py`
+## Separate: "scene heat" in `metrics.py`
 
 **Distinct** from momentum heat: **unique unordered conflict pairs** in-scene ÷ `IN_SCENE` count (`get_scene_heat`). Still used in CLI / diagnostics; not the same formula as the momentum chart.
 
 ## Architecture: engine vs domain
 
 Generic ETL engine lives in `etl_core/` (LangGraph state machine, telemetry, cost tracking). Screenplay-specific models and rules live in `domains/screenplay/`. The engine accepts a pluggable `DomainBundle` so it can be reused for other domains without touching core logic.
+
+The `ingest.py` module exposes `extract_scenes()` — a generator that yields per-scene results, consumed by both the CLI (`main()`) and the Streamlit Pipeline tab.
 
 ## Pipeline order (cold start)
 

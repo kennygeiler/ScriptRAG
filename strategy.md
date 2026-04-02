@@ -1,6 +1,6 @@
-# Narrative MRI — Project Strategy & AI Context
+# ScriptRAG — Project Strategy & AI Context
 
-**Last updated:** March 2026  
+**Last updated:** April 2026  
 **Owner:** Kenny Geiler  
 **Purpose:** Single source of truth for what this repo is, where it stands, where it is going, and **non-negotiable rules** for humans and AI assistants. **Update this file when you pivot or complete a major milestone** so any tool can onboard without a full re-explanation.
 
@@ -8,9 +8,9 @@
 
 ## 1. What this project is
 
-**Narrative MRI** is a **GraphRAG** system for screenplays: it turns structured script data into a **Neo4j** knowledge graph and exposes **structural “physics”** (agency, friction, prop load) through metrics and a **Streamlit** producer dashboard.
+**ScriptRAG** is a **GraphRAG** system for screenplays: it turns structured script data into a **Neo4j** knowledge graph and exposes **structural "physics"** (agency, friction, prop load) through metrics and a **Streamlit** dashboard with a self-healing AI extraction pipeline.
 
-**Core philosophy — “ruthless structuralism”:**  
+**Core philosophy — "ruthless structuralism":**  
 We do not infer vibes from prose alone. We map **narrative physics**: who acts on whom, where conflict is explicit, how passive a character is under a defined graph metric, and whether props earn their place. Evidence lives on edges as **verbatim `source_quote`** text from the script.
 
 **Reference production:** The primary developed script is **Cinema Four** (~86 scenes). The **pipeline is script-agnostic** in principle (any `.fdx` → same JSON → Neo4j shape); some **dashboard copy and arc defaults** still name specific roles (e.g. Zev / Alan) and should be generalized over time.
@@ -23,10 +23,10 @@ We do not infer vibes from prose alone. We map **narrative physics**: who acts o
 |--------|-------------------|-----------|
 | Parse | `raw_scenes.json` | `parser.py` |
 | Lexicon | `master_lexicon.json`, `lexicon.json` | `lexicon.py` |
-| Extract | `validated_graph.json` (per-scene `SceneGraph`) | `ingest.py` (checkpoints each scene; auto-continues partial runs; `--fresh` to wipe) |
-| Load | Neo4j nodes & relationships | `neo4j_loader.py` |
+| Extract | `validated_graph.json` (per-scene `SceneGraph`) | `ingest.py` (exports `extract_scenes()` generator; checkpoints each scene; `--fresh` to wipe) |
+| Load | Neo4j nodes & relationships | `neo4j_loader.py` (exports `load_entries()` for in-memory data) |
 | Analyze | Passivity, heat, Chekhov, QA queries | `metrics.py`, `reconcile.py` |
-| Experience | Dashboard, HITL, chat, pipeline UI | `app.py`, `hitl.py`, `agent.py` |
+| Experience | Pipeline + Editor Agent + Dashboard + Investigate | `app.py`, `agent.py` |
 
 **Graph model (Neo4j):**
 
@@ -34,7 +34,7 @@ We do not infer vibes from prose alone. We map **narrative physics**: who acts o
 - **Structural:** `(entity)-[:IN_SCENE]->(Event)` for entities present in that scene.
 - **Narrative (typed, with `source_quote`):** `INTERACTS_WITH`, `LOCATED_IN`, `USES`, `CONFLICTS_WITH`, `POSSESSES` between Character / Location / Prop as loaded from validated JSON.
 
-**Canonical ingestion (Option A):** There is no alternate LangGraph ingest. **`pipeline.py`**, **`extractor.py`**, and **`main.py` are removed.** The only supported path is `parser.py` → `lexicon.py` → `ingest.py` → `neo4j_loader.py` (CLI or **Pipeline Engine** in `app.py`). **`langchain` / `langchain-community` / `langgraph`** are not direct project dependencies; **`langgraph` may still install transitively** via `langchain-neo4j` (Ask-the-graph tab).
+**Pipeline:** `parser.py` → `lexicon.py` → `ingest.py` (with `etl_core` self-healing loop: extract → validate → fix) → `neo4j_loader.py`. Runs in-process from Streamlit's **Pipeline** tab or via CLI. The `ingest.py` module exports `extract_scenes()` generator consumed by both paths.
 
 **Schema contract:** `schema.py` — Pydantic models for `SceneGraph`, nodes, and `Relationship` (proof quote required).
 
@@ -53,12 +53,10 @@ Use this as a checklist; flip items when reality changes.
 - [x] **Neo4j loader** (merge events, entities, `IN_SCENE`, narrative edges with quotes).
 - [x] **Metrics layer** (`metrics.py`): passivity (global and windowed), scene heat, load-bearing props, possessed-unused, Act I→III Chekhov-style audit, scene inspector quotes, character `IN_SCENE` counts.
 - [x] **Scene heat refinement:** numerator = **distinct unordered conflict pairs** in-scene (not raw `CONFLICTS_WITH` edge count) to reduce dialogue-bloat skew.
-- [x] **Streamlit dashboard** (`app.py`): **Narrative Timeline Analyzer** — **momentum** (per-scene heat `CONFLICTS_WITH/(INTERACTS_WITH+CONFLICTS_WITH)` + 3-scene rolling mean, act-break vlines), **Payoff Matrix** (long-horizon props with **>10** scene gap intro→last use), **power shift** (top 5 characters by interaction count, passivity by **equal-third** act buckets from `get_script_act_bounds`), **protagonist regression** warning (Act 3 passivity **>** Act 1 for configurable `PROTAGONIST_ID`). Graceful empty states when Neo4j returns no rows.
-- [x] **Human-in-the-loop** tab for non-VERIFIED scenes (`hitl.py`).
+- [x] **Streamlit dashboard** (`app.py`): **ScriptRAG** — four tabs: **Pipeline** (upload FDX, in-process extraction with live Editor Agent monitoring), **Editor Agent** (review corrections, approve & load to Neo4j), **Dashboard** (momentum, payoff matrix, power shift charts with X/N scenes banner, protagonist regression warning), **Investigate** (ask the graph).
+- [x] **Self-healing ETL pipeline:** `etl_core` LangGraph engine (extract → validate → fix loop), `ingest.py` exports `extract_scenes()` generator, Streamlit consumes it with live per-scene progress.
 - [x] **Ask the graph** chat path (`agent.py`).
-- [x] **Pipeline Engine** tab: Neo4j + JSON **nuke**, `.fdx` upload → `target_script.fdx`, four-stage `uv run` chain with streamed logs.
 - [x] **Utilities:** `debug_export.py` → `graph_qa_dump.json`; `qa_entities.py` → `data_health_report.json`.
-- [x] **Option A consolidation:** Removed LangGraph / duplicate loader path; dependencies trimmed; Cypher prompts and QA scripts aligned to `:Character`/`:Location`/`:Prop`/`:Event` + `source_quote` + `IN_SCENE`.
 
 ### In progress / known gaps
 
@@ -78,7 +76,7 @@ These definitions are what code should implement; if code diverges, fix code or 
 
 | Metric | Definition |
 |--------|------------|
-| **Passivity** | For a character: `in_degree / (in_degree + out_degree)` on **CONFLICTS_WITH** and **USES** (including incoming **USES** on **POSSESSES**’d props). `None` if no qualifying edges. Windowed variants restrict edges to scenes in `[lo, hi]` (see `get_passivity_in_scene_window`). |
+| **Passivity** | For a character: `in_degree / (in_degree + out_degree)` on **CONFLICTS_WITH** and **USES** (including incoming **USES** on **POSSESSES**'d props). `None` if no qualifying edges. Windowed variants restrict edges to scenes in `[lo, hi]` (see `get_passivity_in_scene_window`). |
 | **Scene heat** | For an `Event`: `(# of **unique unordered** entity pairs with ≥1 in-scene CONFLICTS_WITH between them, either direction) / (count of IN_SCENE links into that Event)`. Undefined heat when denominator is 0. Used in CLI (`metrics.py --heat`) and diagnostics — **not** the same formula as **narrative momentum** below. |
 | **Narrative momentum (dashboard)** | Per `Event`: `CONFLICTS_WITH / (INTERACTS_WITH + CONFLICTS_WITH)` counting in-scene typed edges among co-present entities (`get_narrative_momentum_by_scene`). UI applies a **3-scene** rolling mean (`ROLLING_SCENES` in `app.py`). |
 | **Payoff / long-arc props** | `get_payoff_prop_timelines`: first intro vs last `USES`/`CONFLICTS_WITH`; include if `(last − first) > PAYOFF_MIN_SCENE_GAP` (default **10**). |
@@ -91,18 +89,18 @@ These definitions are what code should implement; if code diverges, fix code or 
 
 ## 5. Dashboard map (`app.py`)
 
-**Layout:** `st.set_page_config(layout="wide")`.
+**Layout:** `st.set_page_config(page_title="ScriptRAG", layout="wide")`.
 
 **Top-level tabs**
 
-1. **Narrative Timeline** — **Momentum** (Plotly line + area, dashed act-boundary vlines from `get_script_act_bounds`), **Payoff Matrix** (horizontal span bars for long-gap props), **Power shift** (multi-line passivity across three act buckets for top interaction characters), protagonist regression warning.
-2. **Human-in-the-Loop validation** — Draft vs Gold, edit nodes/edges, verify scenes (`hitl.py`).
-3. **Ask the graph** — Narrative QA / Cypher path (`agent.py`).
-4. **Pipeline Engine** — Wipe DB + pipeline JSONs, upload `.fdx`, run staged extraction with live logs.
+1. **Pipeline** — Upload `.fdx`, run full extraction in-process (parse → lexicon → per-scene `extract_scenes()` with live progress). Stores results in `st.session_state`. Hidden when `DISABLE_PIPELINE=1`.
+2. **Editor Agent** — Review corrections (only scenes where fixer intervened), before/after JSON diffs. "Approve & Load to Neo4j" button calls `neo4j_loader.load_entries()`.
+3. **Dashboard** — X/N scenes banner, **Momentum** (Plotly line + area, dashed act-boundary vlines), **Payoff Matrix** (horizontal span bars for long-gap props), **Power shift** (multi-line passivity across three act buckets), protagonist regression warning.
+4. **Investigate** — Narrative QA / Cypher path (`agent.py`).
 
-**Cache:** Timeline queries use `@st.cache_data` keyed in part on pipeline artifact mtimes (`filesystem_snapshot` pattern in `app.py`); “Reload metrics” clears cache.
+**Sidebar:** "Reload metrics" clears cache; "Nuke database" in expander for full resets.
 
-**Legacy:** `producer_notes.py` / `:MRIMeta` may still exist in DB from earlier builds; not central to the current Timeline-first UI.
+**Cache:** Dashboard queries use `@st.cache_data` keyed on pipeline artifact mtimes; "Reload metrics" clears cache.
 
 ---
 
@@ -137,7 +135,7 @@ Follow these in every change unless the user explicitly overrides.
 
 8. **Structural metrics first;** sentiment/subtext are secondary and evidence-bound if added later.
 9. **Heat** must use **unique conflict pairs** per scene (see §4).
-10. **Pipeline order** for a cold start: `parser.py` → `lexicon.py` → `ingest.py` → `neo4j_loader.py` (also orchestrated from **Pipeline Engine**).
+10. **Pipeline order** for a cold start: `parser.py` → `lexicon.py` → `ingest.py` → `neo4j_loader.py` (also orchestrated from **Pipeline** tab in `app.py`).
 
 ### When the user pivots or ships a milestone
 
@@ -156,14 +154,14 @@ Follow these in every change unless the user explicitly overrides.
 | `.cursorrules` | Cursor-local concise rules + pointer here |
 | `README.md` | Human onboarding & commands |
 | `schema.py` | Pydantic graph contract |
-| `ingest.py` | LLM extraction → `validated_graph.json` |
+| `ingest.py` | LLM extraction → `validated_graph.json` (exports `extract_scenes()` generator + `SceneResult`) |
 | `metrics.py` | All graph analytics queries |
-| `app.py` | Streamlit application |
-| `neo4j_loader.py` | JSON → Neo4j |
+| `app.py` | Streamlit application (ScriptRAG) |
+| `neo4j_loader.py` | JSON → Neo4j (exports `load_entries()`) |
 | `debug_export.py` | Sample Neo4j → `graph_qa_dump.json` |
 | `qa_entities.py` | Consistency audit → `data_health_report.json` |
-| `pipeline_state.py` | `pipeline_state.json` + `filesystem_snapshot()` for Engine Room |
+| `pipeline_state.py` | `pipeline_state.json` + `filesystem_snapshot()` |
 
 ---
 
-*End of strategy document. Prefer editing this file over scattering “project memory” across chat-only context.*
+*End of strategy document. Prefer editing this file over scattering "project memory" across chat-only context.*

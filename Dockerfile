@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1
 FROM python:3.12-slim-bookworm
 
-LABEL org.opencontainers.image.title="graphrag-narrative-mri"
-LABEL org.opencontainers.image.description="Streamlit Narrative Timeline Analyzer (Neo4j-backed)"
+LABEL org.opencontainers.image.title="scriptrag"
+LABEL org.opencontainers.image.description="ScriptRAG — self-healing screenplay extraction + Neo4j graph analytics"
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 

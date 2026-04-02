@@ -3,15 +3,16 @@
 
 services:
   - type: web
-    name: narrative-mri
+    name: scriptrag
     runtime: docker
     dockerfilePath: ./Dockerfile
     # Free tier spins down; use starter for always-on demos.
     plan: free
     healthCheckPath: /_stcore/health
     envVars:
-      - key: DISABLE_PIPELINE_ENGINE
-        value: "1"
+      # Remove or set to 0 to enable in-browser pipeline; set to 1 for read-only dashboard.
+      # - key: DISABLE_PIPELINE
+      #   value: "1"
       - key: NEO4J_URI
         sync: false
       - key: NEO4J_USER
@@ -20,10 +21,10 @@ services:
         sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
-      # Optional: LangSmith telemetry for the Engine Room ETL pipeline
+      # Optional: LangSmith telemetry for the ETL pipeline
       - key: LANGCHAIN_API_KEY
         sync: false
       - key: LANGCHAIN_TRACING_V2
         value: "true"
       - key: LANGCHAIN_PROJECT
-        value: narrative-mri
+        value: scriptrag

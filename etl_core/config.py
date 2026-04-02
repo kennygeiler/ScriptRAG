@@ -24,5 +24,5 @@ def enable_langsmith() -> bool:
     has_key = bool(os.environ.get("LANGCHAIN_API_KEY"))
     if tracing and has_key:
         os.environ.setdefault("LANGCHAIN_ENDPOINT", "https://api.smith.langchain.com")
-        os.environ.setdefault("LANGCHAIN_PROJECT", "narrative-mri")
+        os.environ.setdefault("LANGCHAIN_PROJECT", "scriptrag")
     return tracing and has_key

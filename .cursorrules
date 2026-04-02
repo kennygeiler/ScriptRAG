@@ -1,17 +1,17 @@
-# Project Memory: Narrative MRI
+# Project Memory: ScriptRAG
 
 **Authoritative context:** See **`strategy.md`** in the repo root for full project state, roadmap, metric definitions, dashboard map, and strict AI rules. **Update `strategy.md` on every major milestone**; keep **`MEMORY.md`** in sync; this file stays a short mirror for Cursor.
 
-**Current date:** March 2026  
-**Owner:** Kenny Geiler  
-**Core philosophy:** “Ruthless structuralism” — narrative **physics** (agency, friction, prop arcs), not vibes. Proof on edges: verbatim **`source_quote`**.
+**Current date:** April 2026 
+**Owner:** Kenny Geiler 
+**Core philosophy:** "Ruthless structuralism" — narrative **physics** (agency, friction, prop arcs), not vibes. Proof on edges: verbatim **`source_quote`**.
 
 ## 1. Project state
 
 - **Input:** `.fdx` (Final Draft) → `raw_scenes.json` → lexicon → `validated_graph.json`.
 - **Graph:** Neo4j — `Character`, `Location`, `Prop`, `Event`; `IN_SCENE` + narrative rels with quotes.
-- **Extraction:** Claude via `instructor` + Pydantic (`schema.py`).
-- **Dashboard (`app.py`):** **Narrative Timeline Analyzer** (wide layout) — **momentum** line (rolling heat), **Payoff Matrix** (long-gap props), **power shift** (top 5 × act passivity), **Zev** regression `st.warning` if Act 3 passivity **>** Act 1. Tabs: **HITL**, **Ask the graph**, **Pipeline Engine**.
+- **Extraction:** Claude via `instructor` + Pydantic (`schema.py`). Self-healing pipeline: extract → validate → fix (up to 3 retries) via `etl_core` LangGraph engine.
+- **Dashboard (`app.py`):** **ScriptRAG** (wide layout). Tabs: **Pipeline** (upload FDX, run in-process extraction with live Editor Agent monitoring), **Editor Agent** (review corrections, approve & load to Neo4j), **Dashboard** (momentum, payoff matrix, power shift charts with X/N scenes banner), **Investigate** (ask the graph).
 
 ## 2. Metrics (do not conflate)
 

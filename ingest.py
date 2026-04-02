@@ -10,9 +10,10 @@ import json
 import os
 import sys
 import time
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator, Literal
 
 from anthropic import APIStatusError
 from pydantic import ValidationError
@@ -31,6 +32,22 @@ DEFAULT_FAILED_LOG = _ROOT / "failed_scenes.log"
 DEFAULT_AUDIT_LOG = _ROOT / "extraction_audit.jsonl"
 
 
+@dataclass
+class SceneResult:
+    """Result of extracting a single scene through the LangGraph pipeline."""
+
+    index: int
+    total: int
+    scene_number: int
+    heading: str
+    status: Literal["skip", "ok", "fixed", "failed", "empty"]
+    graph_entry: dict[str, Any] | None = None
+    audit_entries: list[dict[str, Any]] = field(default_factory=list)
+    tokens: int = 0
+    cost: float = 0.0
+    error: str | None = None
+
+
 def _append_audit_entries(path: Path, entries: list[dict[str, Any]]) -> None:
     if not entries:
         return
@@ -40,7 +57,7 @@ def _append_audit_entries(path: Path, entries: list[dict[str, Any]]) -> None:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
-def _format_scene_user_message(scene: dict[str, Any]) -> str:
+def format_scene_user_message(scene: dict[str, Any]) -> str:
     num = scene.get("number", "?")
     heading = scene.get("heading") or ""
     content = scene.get("content") or ""
@@ -49,7 +66,7 @@ def _format_scene_user_message(scene: dict[str, Any]) -> str:
     return f"--- Scene {num} ---\n{heading}\n{content}\n"
 
 
-def _build_system_prompt(lexicon_content: str) -> str:
+def build_system_prompt(lexicon_content: str) -> str:
     return (
         "You are a Narrative Graph Architect. Extract the Character, Location, and Prop nodes "
         "and their Relationships from the provided scene.\n\n"
@@ -155,6 +172,78 @@ def _write_validated_output(path: Path, by_num: dict[int, dict[str, Any]], scene
     path.write_text(json.dumps(ordered, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
+def extract_scenes(
+    scenes: list[dict[str, Any]],
+    system_prompt: str,
+    *,
+    existing_by_num: dict[int, dict[str, Any]] | None = None,
+) -> Iterator[SceneResult]:
+    """Yield one :class:`SceneResult` per scene.
+
+    Scenes already present in *existing_by_num* are yielded as ``status="skip"``.
+    Empty scenes are yielded as ``status="empty"``.  The caller decides what to
+    do with each result (write to disk, update UI, etc.).
+    """
+    _ensure_clients()
+    by_num = dict(existing_by_num or {})
+    total = len(scenes)
+
+    for i, scene in enumerate(scenes, start=1):
+        sn = _scene_number_key(scene, i)
+        heading = scene.get("heading") or ""
+
+        if sn in by_num:
+            yield SceneResult(
+                index=i, total=total, scene_number=sn, heading=heading,
+                status="skip", graph_entry=by_num[sn],
+            )
+            continue
+
+        if not (scene.get("content") or "").strip():
+            entry = {
+                "scene_number": scene.get("number"),
+                "heading": heading,
+                "graph": SceneGraph().model_dump(mode="json"),
+            }
+            by_num[sn] = entry
+            yield SceneResult(
+                index=i, total=total, scene_number=sn, heading=heading,
+                status="empty", graph_entry=entry,
+            )
+            continue
+
+        user_text = format_scene_user_message(scene)
+        try:
+            graph, audit_entries, pipe_err, telem = run_extraction_pipeline(
+                sn, user_text, system_prompt,
+            )
+            if pipe_err:
+                raise RuntimeError(pipe_err)
+        except Exception as exc:
+            yield SceneResult(
+                index=i, total=total, scene_number=sn, heading=heading,
+                status="failed", audit_entries=[],
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            continue
+
+        had_fix = any(e.get("node") == "fixer" for e in audit_entries)
+        entry = {
+            "scene_number": scene.get("number"),
+            "heading": heading,
+            "graph": graph.model_dump(mode="json"),
+        }
+        by_num[sn] = entry
+        yield SceneResult(
+            index=i, total=total, scene_number=sn, heading=heading,
+            status="fixed" if had_fix else "ok",
+            graph_entry=entry,
+            audit_entries=audit_entries,
+            tokens=telem.get("total_tokens", 0),
+            cost=telem.get("total_cost", 0.0),
+        )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Batch-ingest raw scenes into validated SceneGraph JSON.")
     parser.add_argument(
@@ -226,8 +315,7 @@ def main() -> None:
         sys.exit(1)
 
     total = len(scenes)
-    system_prompt = _build_system_prompt(lexicon_content)
-    _ensure_clients()
+    system_prompt = build_system_prompt(lexicon_content)
 
     expected_nums = {_scene_number_key(s, j + 1) for j, s in enumerate(scenes)}
 
@@ -271,42 +359,33 @@ def main() -> None:
     cumulative_cost = 0.0
 
     try:
-        for i, scene in enumerate(scenes, start=1):
-            last_scene_index = i
-            sn = _scene_number_key(scene, i)
-            if sn in by_num:
-                print(f"[SCENE {i}/{total}] number={sn} — skip (already in output).", flush=True)
+        for result in extract_scenes(scenes, system_prompt, existing_by_num=by_num):
+            last_scene_index = result.index
+            sn = result.scene_number
+
+            if result.status == "skip":
+                print(f"[SCENE {result.index}/{total}] number={sn} — skip (already in output).", flush=True)
                 continue
 
-            print(f"[SCENE {i}/{total}] number={sn} — extracting...", flush=True)
-            user_text = _format_scene_user_message(scene)
-            if not (scene.get("content") or "").strip():
-                by_num[sn] = {
-                    "scene_number": scene.get("number"),
-                    "heading": scene.get("heading"),
-                    "graph": SceneGraph().model_dump(mode="json"),
-                }
+            if result.status == "empty":
+                print(f"[SCENE {result.index}/{total}] number={sn} — empty content.", flush=True)
+            elif result.status == "failed":
+                print(f"❌ Scene {result.index} failed: {result.error}", flush=True)
+                _append_other_failure_log(
+                    args.failed_log, result.index, total,
+                    scenes[result.index - 1], RuntimeError(result.error or "unknown"),
+                )
+                continue
             else:
-                try:
-                    graph, audit_entries, pipe_err, telem = run_extraction_pipeline(sn, user_text, system_prompt)
-                    _append_audit_entries(args.audit_log, audit_entries)
-                    cumulative_tokens += telem.get("total_tokens", 0)
-                    cumulative_cost += telem.get("total_cost", 0.0)
-                    if pipe_err:
-                        raise RuntimeError(pipe_err)
-                except ValidationError as exc:
-                    _append_failed_log(args.failed_log, i, total, scene, exc)
-                except APIStatusError as exc:
-                    _append_api_failure_log(args.failed_log, i, total, scene, exc)
-                except Exception as exc:
-                    print(f"❌ Scene {i} failed ({type(exc).__name__}): {exc}", flush=True)
-                    _append_other_failure_log(args.failed_log, i, total, scene, exc)
-                else:
-                    by_num[sn] = {
-                        "scene_number": scene.get("number"),
-                        "heading": scene.get("heading"),
-                        "graph": graph.model_dump(mode="json"),
-                    }
+                label = "extracted (fixer intervened)" if result.status == "fixed" else "extracted"
+                print(f"[SCENE {result.index}/{total}] number={sn} — {label}.", flush=True)
+
+            _append_audit_entries(args.audit_log, result.audit_entries)
+            cumulative_tokens += result.tokens
+            cumulative_cost += result.cost
+
+            if result.graph_entry:
+                by_num[sn] = result.graph_entry
 
             if checkpoint and sn in by_num:
                 _write_validated_output(args.output, by_num, scenes)
@@ -316,7 +395,7 @@ def main() -> None:
                     raw_scene_count=total,
                     entries=ordered,
                     finished=expected <= set(by_num.keys()),
-                    last_scene_index=i,
+                    last_scene_index=result.index,
                 )
             time.sleep(1)
     except KeyboardInterrupt:

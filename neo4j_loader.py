@@ -209,6 +209,24 @@ def _load_validated_graph(tx: Any, entries: list[dict[str, Any]]) -> None:
             _create_narrative_edge(tx, str(sid), str(tid), st, str(quote))
 
 
+def load_entries(entries: list[dict[str, Any]]) -> int:
+    """Wipe graph and load *entries* into Neo4j.  Returns the count loaded."""
+    uri = _require_env("NEO4J_URI")
+    user = _require_env("NEO4J_USER")
+    password = _require_env("NEO4J_PASSWORD")
+    driver = GraphDatabase.driver(uri, auth=(user, password))
+    try:
+        with driver.session() as session:
+            session.execute_write(_load_validated_graph, entries)
+        try:
+            record_neo4j_loader_ok(entries_loaded=len(entries), path_name="<in-memory>")
+        except OSError:
+            pass
+        return len(entries)
+    finally:
+        driver.close()
+
+
 def _print_graph_stats(session: Any) -> None:
     print("--- Node counts by label ---", flush=True)
     known = ["Event", "Character", "Location", "Prop"]
