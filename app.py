@@ -29,7 +29,7 @@ from cleanup_review import (
     warning_json_location,
     warning_verify_guidance,
 )
-from ingest import _scene_number_key, build_system_prompt, run_single_scene_extraction
+from ingest import _scene_number_key, build_system_prompt, extract_scenes
 from lexicon import build_master_lexicon
 from metrics import get_driver
 from neo4j_loader import load_entries, wipe_screenplay_graph_keep_pipeline_runs
@@ -220,50 +220,6 @@ def _render_pipeline_corrections(corrections: list[dict[str, Any]]) -> None:
                 else:
                     st.markdown(f"**{node}** — {detail}")
                 st.divider()
-
-
-def _finalize_pipeline_chunk(chunk: dict[str, Any], *, cancelled: bool) -> None:
-    _script_name = str(chunk.get("fdx_filename") or "").strip()
-    if not _script_name and _TARGET_FDX.is_file():
-        _script_name = _TARGET_FDX.name
-    st.session_state["pipeline_results"] = {
-        "entries": list(chunk["all_entries"]),
-        "audit_trail": list(chunk["all_audit"]),
-        "warnings": list(chunk["all_warnings"]),
-        "audit_decisions": list(chunk.get("all_audit_decisions", [])),
-        "corrections": list(chunk["corrections"]),
-        "total_scenes": int(chunk["total"]),
-        "extracted": len(chunk["all_entries"]),
-        "failed": int(chunk["failed_count"]),
-        "tokens": int(chunk.get("cum_tokens", 0) or 0),
-        "cost": float(chunk.get("cum_cost", 0.0) or 0.0),
-        "cancelled": cancelled,
-    }
-    st.session_state.pop("verify_hitl_neo4j_load_at", None)
-    st.session_state.pop("verify_hitl_load_audit_payload", None)
-    _saved = _persist_pipeline_run(
-        scenes_extracted=len(chunk["all_entries"]),
-        total_scenes=int(chunk["total"]),
-        corrections_count=len(chunk["corrections"]),
-        warnings_count=len(chunk["all_warnings"]),
-        telemetry_tokens=int(chunk.get("cum_tokens", 0) or 0),
-        telemetry_cost_usd=float(chunk.get("cum_cost", 0.0) or 0.0),
-        failed_scenes=int(chunk["failed_count"]),
-        llm_auditors_enabled=True,
-        fdx_filename=_script_name,
-    )
-    if not _saved:
-        st.warning(
-            "Pipeline finished but **efficiency metrics were not saved** to Neo4j "
-            "(check connection, credentials, and that the DB allows new labels)."
-        )
-    if cancelled:
-        st.info(
-            f"Run cancelled after **{len(chunk['all_entries'])}** scene graph(s); "
-            "partial results are in session state below."
-        )
-    else:
-        st.success("Pipeline complete — metrics below.")
 
 
 # ---------------------------------------------------------------------------
@@ -482,8 +438,6 @@ else:
 
 if st.session_state.get("scriptrag_section") == "Verify":
     st.session_state.scriptrag_section = _VERIFY_TAB_LABEL
-if st.session_state.get("pipeline_chunk"):
-    st.session_state.scriptrag_section = "Pipeline"
 
 _cur = st.session_state.get("scriptrag_section")
 if _cur not in _tab_labels:
@@ -505,60 +459,6 @@ st.divider()
 # ===================================================================
 
 if _PIPELINE_ENABLED and _active == "Pipeline":
-        _chunk_active = st.session_state.get("pipeline_chunk")
-        if _chunk_active is not None:
-            st.info(
-                "**Pipeline running** — processing one scene per refresh so you can **cancel** between scenes. "
-                "Other sections are temporarily disabled until the run finishes or you cancel."
-            )
-            _tot = max(int(_chunk_active["total"]), 1)
-            _done = int(_chunk_active["next_list_idx"])
-            st.progress(
-                min(_done / _tot, 1.0),
-                text=f"Scenes completed: {_done}/{_tot}",
-            )
-            _cancel_chunk = st.button("Cancel pipeline run", type="secondary", key="pipeline_chunk_cancel")
-            if _cancel_chunk:
-                _finalize_pipeline_chunk(_chunk_active, cancelled=True)
-                st.session_state.pop("pipeline_chunk")
-                st.rerun()
-            elif _done >= int(_chunk_active["total"]):
-                _finalize_pipeline_chunk(_chunk_active, cancelled=False)
-                st.session_state.pop("pipeline_chunk")
-                st.rerun()
-            else:
-                _scenes: list[dict[str, Any]] = _chunk_active["scenes"]
-                _i = _done + 1
-                _result = run_single_scene_extraction(
-                    _scenes,
-                    _i,
-                    _chunk_active["system_prompt"],
-                    _chunk_active["by_num"],
-                    lexicon_ids=set(str(x) for x in _chunk_active["lexicon_ids"]),
-                    enable_audit=True,
-                )
-                if _result.graph_entry:
-                    _chunk_active["all_entries"].append(_result.graph_entry)
-                _chunk_active["all_audit"].extend(_result.audit_entries)
-                _chunk_active["cum_tokens"] += _result.tokens
-                _chunk_active["cum_cost"] += _result.cost
-                if _result.warnings:
-                    for w in _result.warnings:
-                        w.setdefault("scene_number", _result.scene_number)
-                    _chunk_active["all_warnings"].extend(_result.warnings)
-                if _result.audit_decisions:
-                    _chunk_active.setdefault("all_audit_decisions", []).extend(_result.audit_decisions)
-                if _result.status == "failed":
-                    _chunk_active["failed_count"] += 1
-                if _result.status == "fixed":
-                    _chunk_active["corrections"].append({
-                        "scene_number": _result.scene_number,
-                        "heading": _result.heading,
-                        "audit_entries": _result.audit_entries,
-                    })
-                _chunk_active["next_list_idx"] = _done + 1
-                st.rerun()
-
         st.header("Pipeline")
         st.caption(
             "Upload a Final Draft (.fdx) screenplay then run the full extraction pipeline. "
@@ -691,14 +591,17 @@ The hallucinated-quote check substring-matches each `source_quote` against the s
             "Run Pipeline",
             type="primary",
             key="pipeline_run",
-            disabled=not _TARGET_FDX.is_file() or st.session_state.get("pipeline_chunk") is not None,
+            disabled=not _TARGET_FDX.is_file(),
         ):
             st.session_state["cleanup_warning_decisions"] = {}
             st.session_state.pop("pipeline_results", None)
             st.session_state.pop("pipeline_chunk", None)
-            with st.status("Pipeline starting…", expanded=True) as pipe_status:
+            with st.status("Pipeline running…", expanded=True) as pipe_status:
+                progress = st.progress(0, text="Starting…")
                 scene_log = st.container()
+
                 pipe_status.update(label="Stage 1 — Parsing FDX…", state="running")
+                progress.progress(0.05, text="Parsing FDX…")
                 try:
                     raw_scenes_path = write_raw_scenes_json(_TARGET_FDX)
                     raw_scenes: list[dict[str, Any]] = json.loads(
@@ -714,6 +617,7 @@ The hallucinated-quote check substring-matches each `source_quote` against the s
                 system_prompt = ""
                 if raw_scenes:
                     pipe_status.update(label="Stage 2 — Building lexicon…", state="running")
+                    progress.progress(0.10, text="Building lexicon (LLM call)…")
                     try:
                         master = build_master_lexicon()
                         lexicon_ids = {e.id for e in master.characters} | {e.id for e in master.locations}
@@ -767,42 +671,120 @@ The hallucinated-quote check substring-matches each `source_quote` against the s
                     else:
                         scene_log.write(f"**Full script:** **{_n_file}** scene(s).")
 
-                if raw_scenes:
-                    if _up is not None:
-                        st.session_state["pipeline_source_fdx_name"] = _up.name
-                    _script_name = str(
-                        st.session_state.get("pipeline_source_fdx_name") or ""
-                    ).strip()
-                    if not _script_name and _TARGET_FDX.is_file():
-                        _script_name = _TARGET_FDX.name
-                    pipe_status.update(
-                        label=f"Stage 3 — Queued **{len(raw_scenes)}** scene(s) (one scene per refresh)…",
-                        state="complete",
-                    )
-                    st.session_state["pipeline_chunk"] = {
-                        "scenes": raw_scenes,
-                        "system_prompt": system_prompt,
-                        "lexicon_ids": sorted(lexicon_ids),
-                        "by_num": {},
-                        "next_list_idx": 0,
-                        "total": len(raw_scenes),
-                        "all_entries": [],
-                        "all_audit": [],
-                        "all_warnings": [],
-                        "all_audit_decisions": [],
-                        "corrections": [],
-                        "cum_tokens": 0,
-                        "cum_cost": 0.0,
-                        "failed_count": 0,
-                        "fdx_filename": _script_name,
-                    }
-                    st.rerun()
+                    if not raw_scenes:
+                        pipe_status.update(label="Nothing to extract", state="error")
+                    else:
+                        total = len(raw_scenes)
+                        pipe_status.update(
+                            label=f"Stage 3 — Extracting 0/{total} scenes (each may take ~1–2 min)…",
+                            state="running",
+                        )
+                        all_entries: list[dict[str, Any]] = []
+                        all_audit: list[dict[str, Any]] = []
+                        all_warnings: list[dict[str, Any]] = []
+                        all_audit_decisions: list[dict[str, Any]] = []
+                        corrections: list[dict[str, Any]] = []
+                        cum_tokens = 0
+                        cum_cost = 0.0
+                        failed_count = 0
+                        done_count = 0
+
+                        for result in extract_scenes(
+                            raw_scenes,
+                            system_prompt,
+                            lexicon_ids=lexicon_ids,
+                            enable_audit=True,
+                        ):
+                            done_count += 1
+                            frac = 0.10 + 0.85 * (result.index / total)
+                            status_icon = {
+                                "skip": "⏭️", "empty": "⬜", "ok": "✅",
+                                "fixed": "🔧", "failed": "❌",
+                            }.get(result.status, "?")
+                            progress.progress(
+                                frac,
+                                text=f"Scene {result.index}/{total} — {result.status}",
+                            )
+                            pipe_status.update(
+                                label=f"Stage 3 — Extracted {done_count}/{total} scenes…",
+                                state="running",
+                            )
+                            msg = (
+                                f"{status_icon} Scene **{result.scene_number}** "
+                                f"({result.heading or 'untitled'}) — {result.status}"
+                            )
+                            if result.status == "failed" and result.error:
+                                msg += f"\n\n`{result.error}`"
+                            scene_log.write(msg)
+
+                            if result.graph_entry:
+                                all_entries.append(result.graph_entry)
+                            all_audit.extend(result.audit_entries)
+                            cum_tokens += result.tokens
+                            cum_cost += result.cost
+                            if result.audit_decisions:
+                                all_audit_decisions.extend(result.audit_decisions)
+
+                            if result.warnings:
+                                for w in result.warnings:
+                                    w.setdefault("scene_number", result.scene_number)
+                                all_warnings.extend(result.warnings)
+
+                            if result.status == "failed":
+                                failed_count += 1
+                            if result.status == "fixed":
+                                corrections.append({
+                                    "scene_number": result.scene_number,
+                                    "heading": result.heading,
+                                    "audit_entries": result.audit_entries,
+                                })
+
+                        progress.progress(1.0, text="Done")
+                        pipe_status.update(label="Pipeline complete", state="complete")
+
+                        st.session_state["pipeline_results"] = {
+                            "entries": all_entries,
+                            "audit_trail": all_audit,
+                            "warnings": all_warnings,
+                            "audit_decisions": all_audit_decisions,
+                            "corrections": corrections,
+                            "total_scenes": total,
+                            "extracted": len(all_entries),
+                            "failed": failed_count,
+                            "tokens": int(cum_tokens or 0),
+                            "cost": float(cum_cost or 0.0),
+                        }
+                        st.session_state.pop("verify_hitl_neo4j_load_at", None)
+                        st.session_state.pop("verify_hitl_load_audit_payload", None)
+                        if _up is not None:
+                            st.session_state["pipeline_source_fdx_name"] = _up.name
+                        _script_name = str(
+                            st.session_state.get("pipeline_source_fdx_name") or ""
+                        ).strip()
+                        if not _script_name and _TARGET_FDX.is_file():
+                            _script_name = _TARGET_FDX.name
+                        _saved = _persist_pipeline_run(
+                            scenes_extracted=len(all_entries),
+                            total_scenes=total,
+                            corrections_count=len(corrections),
+                            warnings_count=len(all_warnings),
+                            telemetry_tokens=int(cum_tokens or 0),
+                            telemetry_cost_usd=float(cum_cost or 0.0),
+                            failed_scenes=failed_count,
+                            llm_auditors_enabled=True,
+                            fdx_filename=_script_name,
+                        )
+                        if not _saved:
+                            st.warning(
+                                "Pipeline finished but **efficiency metrics were not saved** to Neo4j "
+                                "(check connection, credentials, and that the DB allows new labels)."
+                            )
 
         elif not _TARGET_FDX.is_file():
             st.info("Upload a **.fdx** file above to get started.")
 
         _pr = st.session_state.get("pipeline_results")
-        if _pr is not None and st.session_state.get("pipeline_chunk") is None:
+        if _pr is not None:
             c1, c2, c3, c4, c5 = st.columns(5)
             with c1:
                 st.metric("Scenes extracted", f"{_pr['extracted']}/{_pr['total_scenes']}")

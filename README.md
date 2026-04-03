@@ -56,7 +56,7 @@ Follow once **Neo4j** and **`.env`** are set ([quick start](#quick-start)):
    ```
 3. **Optional demo layout** — Set `SCRIPTRAG_DEMO_LAYOUT=1` in `.env` so sections read **Audit & Verify → Data out → Reconcile → …** for walkthroughs.
 4. **Run Streamlit** — `uv run streamlit run app.py` → open **http://localhost:8501**.
-5. **Pipeline** — Run extraction: the UI processes **one scene per rerun** (progress bar) so you can **cancel** between scenes; when auditors are on, high-confidence patches may **auto-apply** (`auditor_auto_apply`); everything else is queued for HITL. When finished (or cancelled), read **self-healing corrections** and the optional **semantic audit decisions** table on the same tab.
+5. **Pipeline** — Run extraction in one go (live progress in the status panel). When auditors are on, high-confidence patches may **auto-apply** (`auditor_auto_apply`); everything else is queued for HITL. When finished, read **self-healing corrections** and the optional **semantic audit decisions** table on the same tab.
 6. **Audit & Verify** — Approve or decline each **warning**; then **Approve & load** into Neo4j (graph JSON already reflects any auto-applied audit patches).
 7. **Data out** — Pick a **recipe query** or download **CSV**; the app stays on this section when you change the query (horizontal **Section** control, not browser tabs).
 8. **Pipeline Efficiency Tracking** — Inspect **:PipelineRun** history (tokens, cost, warnings).
@@ -185,11 +185,11 @@ after the audit **llm** calls, **`process_semantic_audit`** runs: eligible high-
 
 ## streamlit app
 
-wide-layout streamlit. a **horizontal section radio** lists **Pipeline** (when enabled), **Audit & Verify**, **Reconcile**, **Data out**, and **Pipeline Efficiency Tracking**. this avoids `st.tabs()` snapping back to the first tab when widgets inside **Data out** rerun the script. while a pipeline run is active, the app **pins** you to **Pipeline** until the run finishes or you cancel.
+wide-layout streamlit. a **horizontal section radio** lists **Pipeline** (when enabled), **Audit & Verify**, **Reconcile**, **Data out**, and **Pipeline Efficiency Tracking**. this avoids `st.tabs()` snapping back to the first tab when widgets inside **Data out** rerun the script.
 
 | section | what it is |
 |---------|------------|
-| **pipeline** | upload `.fdx`, parse + lexicon, then **one scene per streamlit rerun** (progress + **cancel** between scenes). telemetry; saves **:PipelineRun** on complete or partial run. after a run: **self-healing corrections** (**fixer** + **`auditor_auto_apply`** before/after summaries) and optional **semantic audit decisions** table. |
+| **pipeline** | upload `.fdx`, parse + lexicon, then **full in-process** per-scene extraction (single **Run Pipeline** click; live progress). telemetry; saves **:PipelineRun** when the run completes. after a run: **self-healing corrections** (**fixer** + **`auditor_auto_apply`** before/after summaries) and optional **semantic audit decisions** table. |
 | **audit & verify** | **HITL warnings** — filter/sort/bulk where supported; **approve & load** applies approved edits then loads neo4j. graph JSON from the pipeline already includes any **auto-applied** semantic patches. |
 | **reconcile** | optional **post-load** hygiene: **ghost-like characters** (single scene, no conflicts) and **fuzzy duplicate names** for `:Character` and `:Location`; optional confirmed **merges** (rewire relationships, keep one id). |
 | **data out** | **manipulable data** after load: schema card, live node-label / rel-type counts, fixed **recipe cypher** (read-only), **csv** downloads (narrative edges, characters, events). |
@@ -363,7 +363,7 @@ GraphRAG/
 ├── schema.py                  # pydantic graph contract
 ├── metrics.py                 # cypher analytics
 ├── data_out.py                # schema card, recipe queries, csv-oriented exports for data out tab
-├── app.py                     # streamlit: pipeline (chunked + cancel), audit & verify, reconcile, data out, efficiency
+├── app.py                     # streamlit: pipeline, audit & verify, reconcile, data out, efficiency
 ├── reconcile.py               # fuzzy duplicate + ghost scan; character/location merge (cli + tab)
 ├── lead_resolution.py         # optional SCRIPTRAG_* helpers for programmatic use
 ├── pipeline_runs.py           # :PipelineRun metrics in neo4j
