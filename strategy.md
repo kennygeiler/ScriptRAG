@@ -26,7 +26,7 @@ We do not infer vibes from prose alone. We map **narrative physics**: who acts o
 | Extract | `validated_graph.json` (per-scene `SceneGraph`) | `ingest.py` (exports `extract_scenes()` generator; checkpoints each scene; `--fresh` to wipe) |
 | Load | Neo4j nodes & relationships | `neo4j_loader.py` (exports `load_entries()` for in-memory data) |
 | Analyze | Passivity, heat, Chekhov, QA queries | `metrics.py`, `reconcile.py` |
-| Experience | Pipeline + Cleanup Review + efficiency log + Dashboard + Investigate | `app.py`, `agent.py`, `pipeline_runs.py`, `langsmith_usage.py`, `cleanup_review.py` |
+| Experience | Pipeline + Cleanup Review + efficiency log + Dashboard + Investigate | `app.py`, `agent.py`, `pipeline_runs.py`, `cleanup_review.py` |
 
 **Graph model (Neo4j):**
 
@@ -38,7 +38,7 @@ We do not infer vibes from prose alone. We map **narrative physics**: who acts o
 
 **Schema contract:** `schema.py` — Pydantic models for `SceneGraph`, nodes, and `Relationship` (proof quote required).
 
-**Secrets / env:** `.env` — `ANTHROPIC_API_KEY`, `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD`. Optional **LangSmith** (`LANGCHAIN_TRACING_V2`, `LANGCHAIN_API_KEY`, `LANGCHAIN_PROJECT`) for traces and for **Pipeline Efficiency** token/cost columns (aggregated via LangSmith API after each run). Never commit secrets; use **`.env.example`** as a template.
+**Secrets / env:** `.env` — `ANTHROPIC_API_KEY`, `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD`. Optional **LangSmith** (`LANGCHAIN_TRACING_V2`, `LANGCHAIN_API_KEY`, `LANGCHAIN_PROJECT`) for optional trace export to LangSmith. Never commit secrets; use **`.env.example`** as a template.
 
 **Efficiency persistence:** Each completed pipeline run creates a **`:PipelineRun`** node in Neo4j (`pipeline_runs.py`). Graph wipe for reload excludes `:PipelineRun` so history survives **Approve & Load**.
 
@@ -55,7 +55,7 @@ Use this as a checklist; flip items when reality changes.
 - [x] **Neo4j loader** (merge events, entities, `IN_SCENE`, narrative edges with quotes).
 - [x] **Metrics layer** (`metrics.py`): passivity (global and windowed), scene heat, load-bearing props, possessed-unused, Act I→III Chekhov-style audit, scene inspector quotes, character `IN_SCENE` counts.
 - [x] **Scene heat refinement:** numerator = **distinct unordered conflict pairs** in-scene (not raw `CONFLICTS_WITH` edge count) to reduce dialogue-bloat skew.
-- [x] **Streamlit dashboard** (`app.py`): **ScriptRAG** — **Pipeline** (upload FDX, in-process extraction; persists **:PipelineRun**), **Cleanup Review** (corrections as plain English + compact before/after; warnings with JSON path + approve/decline; approve & load to Neo4j), **Pipeline Efficiency Tracking** (table from Neo4j; LangSmith token/cost when tracing enabled), **Dashboard** (momentum, payoff matrix, power shift, X/N scenes, protagonist regression), **Investigate** (ask the graph).
+- [x] **Streamlit dashboard** (`app.py`): **ScriptRAG** — **Pipeline** (upload FDX, in-process extraction; persists **:PipelineRun**), **Cleanup Review** (corrections as plain English + compact before/after; warnings with JSON path + approve/decline; approve & load to Neo4j), **Pipeline Efficiency Tracking** (table from Neo4j; telemetry token/cost), **Dashboard** (momentum, payoff matrix, power shift, X/N scenes, protagonist regression), **Investigate** (ask the graph).
 - [x] **Self-healing ETL pipeline:** `etl_core` LangGraph engine (extract → validate → fix loop), `ingest.py` exports `extract_scenes()` generator, Streamlit consumes it with live per-scene progress.
 - [x] **Ask the graph** chat path (`agent.py`).
 - [x] **Utilities:** `debug_export.py` → `graph_qa_dump.json`; `qa_entities.py` → `data_health_report.json`.
@@ -95,9 +95,9 @@ These definitions are what code should implement; if code diverges, fix code or 
 
 **Top-level tabs**
 
-1. **Pipeline** — Upload `.fdx`, run full extraction in-process (parse → lexicon → per-scene `extract_scenes()` with live progress). Stores results in `st.session_state`. On completion, writes a **`:PipelineRun`** row (efficiency metrics; LangSmith aggregate in the run window). Hidden when `DISABLE_PIPELINE=1`.
+1. **Pipeline** — Upload `.fdx`, run full extraction in-process (parse → lexicon → per-scene `extract_scenes()` with live progress). Stores results in `st.session_state`. On completion, writes a **`:PipelineRun`** row (efficiency metrics; in-app telemetry). Hidden when `DISABLE_PIPELINE=1`.
 2. **Cleanup Review** — Corrections: plain-English explanation + compact before/after (not full JSON). Warnings: pointer into extracted graph + per-warning approve/decline. "Approve & Load to Neo4j" calls `neo4j_loader.load_entries()` (graph wipe spares `:PipelineRun`).
-3. **Pipeline Efficiency Tracking** — Reads **`:PipelineRun`** from Neo4j; LangSmith columns populated when `LANGCHAIN_TRACING_V2=true` and API key/project are set.
+3. **Pipeline Efficiency Tracking** — Reads **`:PipelineRun`** from Neo4j (telemetry tokens/cost and run metadata).
 4. **Dashboard** — X/N scenes banner, **Momentum** (Plotly line + area, dashed act-boundary vlines), **Payoff Matrix** (horizontal span bars for long-gap props), **Power shift** (multi-line passivity across three act buckets), protagonist regression warning.
 5. **Investigate** — Narrative QA / Cypher path (`agent.py`).
 

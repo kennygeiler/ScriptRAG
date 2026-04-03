@@ -158,7 +158,7 @@ wide-layout streamlit. five tabs (plus **pipeline** when enabled):
 |-----|------------|
 | **pipeline** | upload `.fdx`, run full extraction in-process with live per-scene progress; pass/fix/fail status; telemetry metrics; saves a **:PipelineRun** row in neo4j after each run. |
 | **cleanup review** | plain-english **corrections** (what broke + compact before/after summaries). **warnings** with graph paths + approve/decline for qa. **approve & load to neo4j**. |
-| **pipeline efficiency tracking** | table of past runs from neo4j: scenes, corrections, warnings, **langsmith** tokens/cost (when tracing on), telemetry reference columns, agent opt. version. |
+| **pipeline efficiency tracking** | table of past runs from neo4j: scenes, corrections, warnings, telemetry tokens/cost, agent opt. version. |
 | **dashboard** | **narrative momentum** (per-scene heat = `CONFLICTS_WITH / (INTERACTS_WITH + CONFLICTS_WITH)`, 3-scene rolling mean, dashed act boundaries), **payoff matrix** (long-horizon props > 10 scene gap), **power shift** (passivity index for top 5 characters by act). x/n scenes banner. `st.warning` if protagonist regresses. |
 | **investigate** | ask questions about the script's structure via natural language → cypher (`agent.py`). |
 
@@ -233,7 +233,7 @@ docker build -t scriptrag .
 docker run --rm -p 8501:8501 --env-file .env scriptrag
 ```
 
-`Dockerfile` respects **`PORT`** for render/fly/railway. `docker compose` mounts a named volume at `/var/data` for **`PERSISTENT_DATA_DIR`**. pipeline efficiency rows live in neo4j as **:PipelineRun**; enable **langsmith** tracing to populate langsmith token/cost columns in the efficiency tab.
+`Dockerfile` respects **`PORT`** for render/fly/railway. `docker compose` mounts a named volume at `/var/data` for **`PERSISTENT_DATA_DIR`**. pipeline efficiency rows live in neo4j as **:PipelineRun** (telemetry tokens/cost from the app run).
 
 ### one machine: neo4j + app
 
@@ -276,7 +276,6 @@ GraphRAG/
 ├── metrics.py                 # cypher analytics
 ├── app.py                     # streamlit: pipeline, cleanup review, efficiency, dashboard, investigate
 ├── pipeline_runs.py           # :PipelineRun metrics in neo4j
-├── langsmith_usage.py         # aggregate tokens/cost from langsmith for a time window
 ├── cleanup_review.py          # plain-english correction summaries + warning paths
 ├── agent.py                   # nl → cypher
 ├── Dockerfile

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -23,7 +22,6 @@ from cleanup_review import (
     warning_json_location,
 )
 from ingest import build_system_prompt, extract_scenes
-from langsmith_usage import aggregate_langsmith_usage
 from lexicon import build_master_lexicon
 from metrics import (
     get_driver,
@@ -72,14 +70,7 @@ def _persist_pipeline_run(
     telemetry_cost_usd: float,
     failed_scenes: int,
     llm_auditors_enabled: bool,
-    pipeline_started_at: datetime | None,
 ) -> bool:
-    ls_tokens, ls_cost = (0, 0.0)
-    if pipeline_started_at is not None:
-        ls_tokens, ls_cost = aggregate_langsmith_usage(
-            pipeline_started_at,
-            datetime.now(timezone.utc),
-        )
     drv = None
     try:
         drv = get_driver()
@@ -89,8 +80,6 @@ def _persist_pipeline_run(
             total_scenes=total_scenes,
             corrections_count=corrections_count,
             warnings_count=warnings_count,
-            langsmith_tokens=ls_tokens,
-            langsmith_cost_usd=ls_cost,
             telemetry_tokens=telemetry_tokens,
             telemetry_cost_usd=telemetry_cost_usd,
             agent_optimization_version=AGENT_OPTIMIZATION_VERSION,
@@ -612,7 +601,6 @@ For an 86-scene script: **~$0.85 fast** or **~$2.50 full audit**.
             key="pipeline_run",
             disabled=not _TARGET_FDX.is_file(),
         ):
-            st.session_state["pipeline_run_started_at"] = datetime.now(timezone.utc)
             st.session_state["cleanup_warning_decisions"] = {}
             with st.status("Pipeline running…", expanded=True) as pipe_status:
                 progress = st.progress(0, text="Starting…")
@@ -734,7 +722,6 @@ For an 86-scene script: **~$0.85 fast** or **~$2.50 full audit**.
                         "tokens": cum_tokens,
                         "cost": cum_cost,
                     }
-                    _t0 = st.session_state.pop("pipeline_run_started_at", None)
                     _saved = _persist_pipeline_run(
                         scenes_extracted=len(all_entries),
                         total_scenes=total,
@@ -744,7 +731,6 @@ For an 86-scene script: **~$0.85 fast** or **~$2.50 full audit**.
                         telemetry_cost_usd=cum_cost,
                         failed_scenes=failed_count,
                         llm_auditors_enabled=bool(_enable_audit),
-                        pipeline_started_at=_t0 if isinstance(_t0, datetime) else None,
                     )
                     if not _saved:
                         st.warning(
@@ -948,8 +934,6 @@ with tab_efficiency:
     st.header("Pipeline Efficiency Tracking")
     st.caption(
         "Each completed pipeline run is stored as a **:PipelineRun** node in Neo4j (not wiped when you load a screenplay). "
-        "**LangSmith tokens / cost** are aggregated from traced LLM runs in your project between pipeline start and finish "
-        "(requires `LANGCHAIN_TRACING_V2=true` and `LANGCHAIN_API_KEY`). "
         "**Telemetry** columns mirror in-process Anthropic usage from the app. "
         f"Bump **`AGENT_OPTIMIZATION_VERSION`** in `app.py` when you ship pipeline improvements (current: **{AGENT_OPTIMIZATION_VERSION}**)."
     )
@@ -968,15 +952,12 @@ with tab_efficiency:
             "No runs logged yet. Complete a pipeline run in the **Pipeline** tab (Neo4j must be reachable)."
         )
     else:
-        chronological = list(reversed(rows))
         display: list[dict[str, Any]] = []
         for r in rows:
             if not isinstance(r, dict):
                 continue
             ext = int(r.get("scenes_extracted", 0) or 0)
             tot = int(r.get("total_scenes", 0) or 0)
-            ls_tok = int(r.get("langsmith_tokens", 0) or 0)
-            ls_cost = float(r.get("langsmith_cost_usd", 0) or 0)
             tel_tok = int(r.get("telemetry_tokens", 0) or 0)
             tel_cost = float(r.get("telemetry_cost_usd", 0) or 0)
             display.append({
@@ -984,8 +965,6 @@ with tab_efficiency:
                 "Scenes extracted": f"{ext} / {tot}" if tot else str(ext),
                 "Corrections": int(r.get("corrections_count", 0) or 0),
                 "Warnings": int(r.get("warnings_count", 0) or 0),
-                "LangSmith tokens": ls_tok,
-                "LangSmith cost ($)": round(ls_cost, 4),
                 "Telemetry tokens": tel_tok,
                 "Telemetry cost ($)": round(tel_cost, 4),
                 "Agent opt. ver.": int(r.get("agent_optimization_version", 0) or 0),
@@ -994,42 +973,6 @@ with tab_efficiency:
             })
         df = pd.DataFrame(display)
         st.dataframe(df, use_container_width=True, hide_index=True)
-
-        ls_costs = [float(r.get("langsmith_cost_usd", 0) or 0) for r in chronological]
-        ls_tokens = [int(r.get("langsmith_tokens", 0) or 0) for r in chronological]
-        if len(ls_costs) >= 2 and any(ls_costs):
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(
-                y=ls_costs,
-                mode="lines+markers",
-                name="LangSmith est. cost ($)",
-                line=dict(color="#FF4B4B"),
-            ))
-            fig.update_layout(
-                title="LangSmith-estimated cost per run (chronological)",
-                xaxis_title="Run index",
-                yaxis_title="USD",
-                height=320,
-                margin=dict(l=40, r=20, t=50, b=40),
-            )
-            st.plotly_chart(fig, use_container_width=True)
-
-        if len(ls_tokens) >= 2 and any(ls_tokens):
-            fig2 = go.Figure()
-            fig2.add_trace(go.Scatter(
-                y=ls_tokens,
-                mode="lines+markers",
-                name="LangSmith tokens",
-                line=dict(color="#1f77b4"),
-            ))
-            fig2.update_layout(
-                title="LangSmith token totals per run (chronological)",
-                xaxis_title="Run index",
-                yaxis_title="Tokens",
-                height=320,
-                margin=dict(l=40, r=20, t=50, b=40),
-            )
-            st.plotly_chart(fig2, use_container_width=True)
 
 
 # ===================================================================
