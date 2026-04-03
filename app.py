@@ -371,7 +371,7 @@ st.set_page_config(
 st.title("ScriptRAG")
 st.caption(
     "Upload a screenplay, extract a knowledge graph with a self-healing AI pipeline, "
-    "review corrections in **Pipeline**, **Verify** warnings, then explore the data."
+    f"review corrections in **Pipeline**, **{_VERIFY_TAB_LABEL}** warnings, then explore the data."
 )
 
 if _flash := st.session_state.pop("_flash", None):
@@ -382,12 +382,33 @@ with st.sidebar:
     st.header("Controls")
     if _SCRIPTRAG_DEMO_LAYOUT:
         st.caption(
-            "**Demo layout** (`SCRIPTRAG_DEMO_LAYOUT=1`): **Verify → Data out** before **Reconcile** "
+            f"**Demo layout** (`SCRIPTRAG_DEMO_LAYOUT=1`): **{_VERIFY_TAB_LABEL} → Data out** before **Reconcile** "
             "— for pipeline storytelling."
+        )
+    with st.expander("When to reset or reload", expanded=False):
+        st.markdown(
+            "**Reload Neo4j cache** — Click when **Data out** or **Reconcile** still show **old** label or "
+            "relationship counts after you **Approve & load**, run a **merge**, or change the graph in **Neo4j Browser** "
+            "(or another tool). This only clears **Streamlit’s cached queries** and reloads fresh reads from Neo4j — "
+            "it does **not** delete graph data."
+        )
+        st.markdown(
+            "**Reset graph & pipeline files** — Click when you are **switching screenplays**, a **major new draft**, "
+            "or you want a **clean slate**: it removes the screenplay from **Neo4j**, deletes on-disk pipeline JSON "
+            r"(`raw_scenes.json`, `master_lexicon.json`, `validated_graph.json`, `pipeline_state.json`), and clears "
+            "in-session pipeline / verify state so nothing mixes with the previous script. **:PipelineRun** efficiency "
+            "history is **kept**."
+        )
+        st.markdown(
+            f"**Typical new script:** upload **.fdx** → (optional) **Reset** for a clean slate → **Run Pipeline** → "
+            f"**{_VERIFY_TAB_LABEL}** → **Approve & load** → use **Reload cache** only if tables still look stale."
         )
     if st.button(
         "Reload Neo4j cache",
-        help="Clears Streamlit cache after pipeline, load, or external graph edits (Data out, Reconcile).",
+        help=(
+            "Clears Streamlit @st.cache_data (Neo4j queries, reconciliation scan, FDX stats). "
+            "Use after Approve & load, merges, or edits outside the app if counts look stale. Does not wipe Neo4j."
+        ),
         key="sidebar_reload",
     ):
         st.cache_data.clear()
@@ -396,8 +417,8 @@ with st.sidebar:
 
     with st.expander("Reset graph data", expanded=False):
         st.caption(
-            "Clears the **screenplay graph** in Neo4j and removes pipeline JSON on disk. "
-            "**:PipelineRun** rows are kept — **Pipeline Efficiency Tracking** history stays."
+            "Clears the **screenplay graph** in Neo4j and removes pipeline JSON on disk — use when **changing scripts** "
+            "or you need disk + DB aligned to one project. **:PipelineRun** rows are kept — **Pipeline Efficiency Tracking** history stays."
         )
         if st.button("Clear graph & pipeline files", key="sidebar_nuke"):
             try:
