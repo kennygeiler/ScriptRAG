@@ -25,7 +25,7 @@ This milestone takes ScriptRAG from Cinema Four–centric defaults and brittle d
   1. Primary (and any UI-relevant) leads for regression warnings and role-dependent analytics come from **documented graph/metrics analysis**; environment or small project config can **override or pin** when needed; `PROTAGONIST_ID`-style constants are not the sole source of truth.
   2. User-visible copy and labels across **Pipeline, Cleanup Review, Pipeline Efficiency Tracking, Dashboard, and Investigate** (and related operator-facing modules) use analysis- or graph-derived identities (plus overrides)—not fixed script-specific character IDs in code.
   3. After changing **override** config, a Streamlit restart (or redeploy) reflects updated lead-dependent behavior; changing loaded graph data continues to drive analysis through existing cache/data paths.
-**Plans**: TBD
+**Plans**: 2 (`01-01-PLAN.md` CONFIG-01, `01-02-PLAN.md` GEN-01)
 **UI hint**: yes
 
 ### Phase 2: Graph reliability & empty states
@@ -67,7 +67,7 @@ This milestone takes ScriptRAG from Cinema Four–centric defaults and brittle d
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Config & script-generalized dashboard | TBD | Not started | - |
+| 1. Config & script-generalized dashboard | 0/2 | Planned | - |
 | 2. Graph reliability & empty states | TBD | Not started | - |
 | 3. Reconciliation for operators | TBD | Not started | - |
 | 4. Production complexity signal | TBD | Not started | - |
