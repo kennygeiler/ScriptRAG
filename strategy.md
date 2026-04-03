@@ -57,7 +57,7 @@ Use this as a checklist; flip items when reality changes.
 - [x] **Scene heat refinement:** numerator = **distinct unordered conflict pairs** in-scene (not raw `CONFLICTS_WITH` edge count) to reduce dialogue-bloat skew.
 - [x] **Streamlit app** (`app.py`): **ScriptRAG** — **Pipeline** (upload FDX, in-process extraction; persists **:PipelineRun**; self-healing **corrections** shown here), **Verify** (warnings with guidance + approve/decline; approve & load to Neo4j), **Reconcile** (`reconcile.py` scan + optional confirmed merges; ghosts + fuzzy Character/Location pairs), **Data out** (schema, recipe Cypher, CSV), **Pipeline Efficiency Tracking** (table from Neo4j; telemetry token/cost). Section navigation uses a **horizontal radio** (not `st.tabs`) so widget reruns keep the user on the same view (e.g. **Data out** recipe query).
 - [x] **Self-healing ETL pipeline:** `etl_core` LangGraph engine (extract → validate → fix loop), `ingest.py` exports `extract_scenes()` generator, Streamlit consumes it with live per-scene progress.
-- [x] **Utilities:** `debug_export.py` → `graph_qa_dump.json`; `qa_entities.py` → `data_health_report.json`.
+- [x] **Utilities:** `tools/debug_export.py` → `graph_qa_dump.json`; `tools/qa_entities.py` → `data_health_report.json`.
 
 ### In progress / known gaps
 
@@ -172,8 +172,9 @@ Follow these in every change unless the user explicitly overrides.
 | `metrics.py` | All graph analytics queries |
 | `app.py` | Streamlit application (ScriptRAG) |
 | `neo4j_loader.py` | JSON → Neo4j (exports `load_entries()`) |
-| `debug_export.py` | Sample Neo4j → `graph_qa_dump.json` |
-| `qa_entities.py` | Consistency audit → `data_health_report.json` |
+| `tools/debug_export.py` | Sample Neo4j → `graph_qa_dump.json` |
+| `tools/qa_entities.py` | Consistency audit → `data_health_report.json` |
+| `tools/producer_notes.py` | Producer/director overlay notes (`MRIMeta` / `Event` fields) |
 | `pipeline_state.py` | `pipeline_state.json` + `filesystem_snapshot()` |
 | `reconcile.py` | Fuzzy duplicate + ghost scan; Character/Location merge (APOC or manual rewire) |
 | `lead_resolution.py` | Primary lead + top-K from metrics; `SCRIPTRAG_*` env overrides |

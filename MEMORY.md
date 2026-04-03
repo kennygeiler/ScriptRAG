@@ -41,6 +41,10 @@ Charts were removed from the app; definitions remain for **CLI** and programmati
 
 **Distinct** from momentum heat: **unique unordered conflict pairs** in-scene ÷ `IN_SCENE` count (`get_scene_heat`). CLI / diagnostics; different formula than narrative momentum.
 
+## Optional `tools/`
+
+Neo4j QA exports and related helpers live under **`tools/`** (`tools/README.md`). Run scripts from the repo root (`uv run python tools/debug_export.py`, etc.); outputs default to the repo root (`graph_qa_dump.json`, `data_health_report.json`).
+
 ## Architecture: engine vs domain
 
 Generic ETL engine lives in `etl_core/` (LangGraph state machine, telemetry, cost tracking). Screenplay-specific models and rules live in `domains/screenplay/`. The engine accepts a pluggable `DomainBundle` so it can be reused for other domains without touching core logic.

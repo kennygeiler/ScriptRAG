@@ -13,7 +13,7 @@ ENV UV_COMPILE_BYTECODE=1 \
 WORKDIR /app
 
 # Dependency layer (cache-friendly)
-COPY pyproject.toml uv.lock README.md ./
+COPY pyproject.toml uv.lock README.md LICENSE ./
 RUN uv sync --frozen --no-install-project --no-dev
 
 # Application

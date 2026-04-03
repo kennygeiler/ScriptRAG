@@ -19,8 +19,8 @@ load_dotenv()
 
 from neo4j import GraphDatabase
 
-_ROOT = Path(__file__).resolve().parent
-OUT_PATH = _ROOT / "graph_qa_dump.json"
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+OUT_PATH = _REPO_ROOT / "graph_qa_dump.json"
 
 SAMPLE_SCENES = (1, 40, 86)
 

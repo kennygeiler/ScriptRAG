@@ -30,9 +30,10 @@ GraphRAG/
 ├── lexicon.py                # Lexicon build/merge
 ├── metrics.py                # Dashboard + CLI metrics
 ├── reconcile.py              # Entity reconciliation (scale path)
-├── qa_entities.py            # QA entity dumps
-├── debug_export.py           # Debug exports
-├── producer_notes.py         # Producer-notes tooling
+├── tools/                    # optional QA CLIs; see tools/README.md
+│   ├── qa_entities.py
+│   ├── debug_export.py
+│   └── producer_notes.py
 ├── pyproject.toml            # uv / project metadata
 ├── requirements.txt          # Lock-style pins (see pyproject)
 ├── docker-compose.yml        # Local stack
@@ -72,7 +73,7 @@ GraphRAG/
 
 **Entry points:**
 - `app.py`: Streamlit dashboard (`uv run streamlit run app.py`).
-- `ingest.py`, `neo4j_loader.py`, `lexicon.py`, `metrics.py`, `reconcile.py`, `qa_entities.py`, `debug_export.py`, `producer_notes.py`: `if __name__ == "__main__"` CLIs.
+- `ingest.py`, `neo4j_loader.py`, `lexicon.py`, `metrics.py`, `reconcile.py`, `tools/qa_entities.py`, `tools/debug_export.py`: `if __name__ == "__main__"` CLIs (`uv run python tools/…` from repo root).
 
 **Configuration:**
 - `pyproject.toml`: Python project and tool config.

@@ -19,6 +19,7 @@
 | Area | Files |
 |------|--------|
 | Sample scripts | `samples/` (`samples/README.md`); root **README** demo walkthrough |
+| Optional tools | `tools/` (`tools/README.md`) — Neo4j QA exports, producer notes helper |
 | Graph load | `neo4j_loader.py`, `schema.py` |
 | Analytics | `metrics.py` |
 | UI | `app.py`, `cleanup_review.py`, `pipeline_runs.py`, `reconcile.py`, `data_out.py` |

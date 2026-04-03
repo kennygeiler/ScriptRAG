@@ -14,6 +14,9 @@
 [![Streamlit](https://img.shields.io/badge/Streamlit-app-FF4B4B.svg)](https://streamlit.io/)
 [![uv](https://img.shields.io/badge/uv-astral-915C83.svg)](https://github.com/astral-sh/uv)
 [![Claude](https://img.shields.io/badge/extract-Claude%20%2B%20Instructor-D4A574.svg)](https://github.com/jxnl/instructor)
+[![Live demo — Render](https://img.shields.io/badge/live%20demo-scriptrag.onrender.com-5a67d8.svg)](https://scriptrag.onrender.com/)
+
+**Deployed app:** [https://scriptrag.onrender.com/](https://scriptrag.onrender.com/) (Streamlit; set secrets on Render per [deployment](#deployment)).
 
 ## the problem
 
@@ -326,9 +329,15 @@ open **http://localhost:8501**, upload your screenplay, and run the pipeline fro
 
 ```
 GraphRAG/
+├── LICENSE                    # MIT
 ├── samples/                   # bundled .fdx (+ pdf companions); see samples/README.md
 │   ├── cinema-four/
 │   └── ludwig/
+├── tools/                     # optional Neo4j QA scripts; see tools/README.md
+│   ├── debug_export.py
+│   ├── qa_entities.py
+│   ├── producer_notes.py
+│   └── README.md
 ├── etl_core/                  # domain-agnostic self-healing ETL engine
 │   ├── config.py              #   .env + langsmith bootstrap
 │   ├── state.py               #   langgraph ETLState (tokens, cost, audit)
@@ -355,7 +364,7 @@ GraphRAG/
 ├── lead_resolution.py         # optional SCRIPTRAG_* helpers for programmatic use
 ├── pipeline_runs.py           # :PipelineRun metrics in neo4j
 ├── cleanup_review.py          # plain-english correction summaries + warning paths
-├── Dockerfile
+├── Dockerfile                 # production image; entrypoint runs streamlit
 ├── docker-compose.yml         # app → external neo4j / aura
 ├── docker-compose.stack.yml   # neo4j + app on one host
 ├── render.yaml                # render blueprint
@@ -366,4 +375,6 @@ GraphRAG/
 
 ## license
 
-add a license (e.g. mit) when you publish the repo.
+[MIT](LICENSE). Copyright (c) 2026 Kenny Geiler.
+
+To show the live URL on the GitHub repo **About** panel: **Settings → General → Website** → `https://scriptrag.onrender.com/`.

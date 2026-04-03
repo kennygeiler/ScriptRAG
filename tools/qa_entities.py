@@ -22,8 +22,8 @@ load_dotenv()
 
 from neo4j import GraphDatabase
 
-_ROOT = Path(__file__).resolve().parent
-OUT_PATH = _ROOT / "data_health_report.json"
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+OUT_PATH = _REPO_ROOT / "data_health_report.json"
 
 FUZZY_MIN_RATIO = 0.85
 ENTITY_LABELS_FOR_FUZZY = ("Character", "Location", "Prop")

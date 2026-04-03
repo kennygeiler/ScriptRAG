@@ -19,7 +19,7 @@ services:
     envVars:
       - key: PERSISTENT_DATA_DIR
         value: /var/data
-      # Remove or set to 0 to enable in-browser pipeline; set to 1 for read-only dashboard.
+      # Remove or set to 0 to enable in-browser pipeline; set to 1 for read-only Streamlit (no Pipeline tab).
       # - key: DISABLE_PIPELINE
       #   value: "1"
       - key: NEO4J_URI
