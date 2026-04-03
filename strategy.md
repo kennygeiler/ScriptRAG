@@ -63,7 +63,7 @@ Use this as a checklist; flip items when reality changes.
 ### In progress / known gaps
 
 - [x] **Timeline empty states:** Narrative Timeline charts guard empty Cypher results and missing columns.
-- [ ] **Full script-agnostic UI:** Protagonist ID for regression warning is still a constant in `app.py` (`PROTAGONIST_ID`); promote to env or project config when needed.
+- [x] **Full script-agnostic UI (primary lead):** Regression uses `lead_resolution` — env override `SCRIPTRAG_PRIMARY_LEAD_ID` or analysis rank #1; cohort size `SCRIPTRAG_TOP_CHARACTERS`.
 
 ### Explicitly not started (roadmap)
 
@@ -84,7 +84,7 @@ These definitions are what code should implement; if code diverges, fix code or 
 | **Payoff / long-arc props** | `get_payoff_prop_timelines`: first intro vs last `USES`/`CONFLICTS_WITH`; include if `(last − first) > PAYOFF_MIN_SCENE_GAP` (default **10**). |
 | **Power-shift cohort** | Top **K** characters by total **CONFLICTS_WITH + USES + INTERACTS_WITH** edge count, both directions (`get_top_characters_by_interaction_count`). |
 | **Act buckets (dashboard)** | **Equal thirds** of inclusive scene span `min(:Event.number)…max(:Event.number)` (`get_script_act_bounds` in `metrics.py`). Vertical markers on momentum chart at first scene of Act 2 and Act 3 when structurally distinct. |
-| **Protagonist regression (UI)** | If `PROTAGONIST_ID` passivity in Act 3 **>** Act 1 → `st.warning` (fatal arc / regressing). |
+| **Primary-lead regression (UI)** | **Primary** = `SCRIPTRAG_PRIMARY_LEAD_ID` if set, else Character at rank **#1** by `get_top_characters_by_interaction_count(1)` (same edge mix as power-shift). If that id’s passivity in Act 3 **>** Act 1 → `st.warning` (fatal arc). If id missing from matrix or unresolved → informative message, no warning. |
 | **Load-bearing props** | Props with **≥2** total **USES** or **CONFLICTS_WITH** touches (after set-dressing filter in `metrics.py`). Used in older Chekhov-style CLI audits, not the Payoff Matrix chart. |
 
 ---

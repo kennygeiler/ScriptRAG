@@ -22,6 +22,7 @@ from cleanup_review import (
     warning_json_location,
 )
 from ingest import build_system_prompt, extract_scenes
+from lead_resolution import resolve_primary_character_id, top_characters_k
 from lexicon import build_master_lexicon
 from metrics import (
     get_driver,
@@ -37,8 +38,6 @@ from pipeline_runs import list_pipeline_runs, save_pipeline_run
 
 ROLLING_SCENES = 3
 PAYOFF_MIN_SCENE_GAP = 10
-TOP_INTERACTION_CHARACTERS = 5
-PROTAGONIST_ID = "zev"
 
 _PROJECT_ROOT = Path(__file__).resolve().parent
 _TARGET_FDX = _PROJECT_ROOT / "target_script.fdx"
@@ -157,11 +156,23 @@ def _cached_payoff_props(_artifact_stamp: tuple[float, float]) -> list[dict[str,
 
 
 @st.cache_data(ttl=120, show_spinner="Loading character interaction ranks…")
-def _cached_top_characters(_artifact_stamp: tuple[float, float]) -> list[dict[str, Any]]:
+def _cached_top_characters(_artifact_stamp: tuple[float, float], top_k: int) -> list[dict[str, Any]]:
     del _artifact_stamp
     drv = get_driver()
     try:
-        return get_top_characters_by_interaction_count(TOP_INTERACTION_CHARACTERS, driver=drv)
+        return get_top_characters_by_interaction_count(top_k, driver=drv)
+    finally:
+        drv.close()
+
+
+@st.cache_data(ttl=120, show_spinner="Resolving primary lead…")
+def _cached_primary_lead(_artifact_stamp: tuple[float, float]) -> tuple[str | None, bool]:
+    del _artifact_stamp
+    drv = get_driver()
+    try:
+        override = bool(os.environ.get("SCRIPTRAG_PRIMARY_LEAD_ID", "").strip())
+        pid = resolve_primary_character_id(driver=drv)
+        return (pid, override)
     finally:
         drv.close()
 
@@ -351,11 +362,12 @@ def _render_power_shift(
     top_chars: list[dict[str, Any]],
     matrix: dict[str, list[float | None]],
     act_bounds: dict[str, Any] | None,
+    top_k: int,
 ) -> None:
     st.subheader("Power shift — agency by act")
     cap = (
         f"Passivity index (in-degree / total degree on `CONFLICTS_WITH` + `USES`, same as MRI metrics) "
-        f"for the **{TOP_INTERACTION_CHARACTERS}** characters with the most interaction edges. "
+        f"for the **{top_k}** characters with the most interaction edges. "
     )
     if act_bounds:
         a1, a2, a3 = act_bounds["act1"], act_bounds["act2"], act_bounds["act3"]
@@ -405,9 +417,26 @@ def _render_power_shift(
     st.plotly_chart(fig, use_container_width=True)
 
 
-def _protagonist_regression_warning(matrix: dict[str, list[float | None]]) -> None:
-    zev_key = next((k for k in matrix if k.lower() == PROTAGONIST_ID.lower()), PROTAGONIST_ID)
-    row = matrix.get(zev_key) or matrix.get(PROTAGONIST_ID)
+def _primary_lead_regression_warning(
+    matrix: dict[str, list[float | None]],
+    primary_id: str | None,
+    is_override: bool,
+) -> None:
+    if primary_id is None:
+        st.info(
+            "No primary lead resolved — no characters with interaction edges in Neo4j. "
+            "Arc regression check skipped."
+        )
+        return
+    primary_key = next((k for k in matrix if k.lower() == primary_id.lower()), None)
+    if primary_key is None:
+        src = "configured" if is_override else "analysis"
+        st.info(
+            f"Primary lead id `{primary_id}` ({src}) is not in the act passivity matrix — "
+            "regression check skipped."
+        )
+        return
+    row = matrix.get(primary_key)
     if not row or len(row) < 3:
         return
     p1, _, p3 = row[0], row[1], row[2]
@@ -415,8 +444,8 @@ def _protagonist_regression_warning(matrix: dict[str, list[float | None]]) -> No
         return
     if float(p3) > float(p1):
         st.warning(
-            "**FATAL ARC:** The protagonist is regressing — **Act 3 passivity exceeds Act 1** "
-            f"({float(p3):.3f} vs {float(p1):.3f} for **{zev_key}**)."
+            "**FATAL ARC:** The primary lead is regressing — **Act 3 passivity exceeds Act 1** "
+            f"({float(p3):.3f} vs {float(p1):.3f} for **{primary_key}**)."
         )
 
 
@@ -432,13 +461,18 @@ st.set_page_config(
 
 # --------------- data loads (cached) --------------------------------
 _DASH_STAMP = _neo4j_dashboard_cache_stamp()
+_TOP_K = top_characters_k()
 momentum_rows = _cached_momentum_rows(_DASH_STAMP)
 payoff_rows = _cached_payoff_props(_DASH_STAMP)
-top_chars = _cached_top_characters(_DASH_STAMP)
+top_chars = _cached_top_characters(_DASH_STAMP, _TOP_K)
 _act_bounds = _cached_act_bounds(_DASH_STAMP)
 _act_bounds_key = _act_bounds_six(_act_bounds) if _act_bounds else None
+_primary_id, _primary_override = _cached_primary_lead(_DASH_STAMP)
 _ids_tuple = tuple(str(c["id"]) for c in top_chars)
-_extra = tuple(dict.fromkeys(list(_ids_tuple) + [PROTAGONIST_ID]))
+_extra_ids = list(_ids_tuple)
+if _primary_id:
+    _extra_ids.append(_primary_id)
+_extra = tuple(dict.fromkeys(_extra_ids))
 _act_matrix = _cached_act_passivity_matrix(_DASH_STAMP, _extra, _act_bounds_key)
 _event_count = _cached_event_count(_DASH_STAMP)
 
@@ -455,6 +489,16 @@ if _flash := st.session_state.pop("_flash", None):
 # --------------- sidebar --------------------------------------------
 with st.sidebar:
     st.header("Controls")
+    with st.expander("Primary lead", expanded=False):
+        if _primary_id:
+            _src = (
+                "`SCRIPTRAG_PRIMARY_LEAD_ID` override"
+                if _primary_override
+                else "Analysis: rank #1 by interaction edge count"
+            )
+            st.caption(f"**{_primary_id}** — {_src}")
+        else:
+            st.caption("None resolved (empty graph or no interaction edges).")
     if st.button(
         "Reload metrics from Neo4j",
         help="Clears Streamlit cache after pipeline or external graph edits.",
@@ -1005,8 +1049,8 @@ with tab_dashboard:
     st.divider()
     _render_payoff_matrix(payoff_rows)
     st.divider()
-    _render_power_shift(top_chars, _act_matrix, _act_bounds)
-    _protagonist_regression_warning(_act_matrix)
+    _render_power_shift(top_chars, _act_matrix, _act_bounds, _TOP_K)
+    _primary_lead_regression_warning(_act_matrix, _primary_id, _primary_override)
 
 
 # ===================================================================

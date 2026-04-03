@@ -34,5 +34,5 @@
 
 ## 5. Roadmap hints
 
-- Hardening: config-driven protagonist ID; optional env overrides for act breaks if needed.
+- Hardening: primary lead via `lead_resolution` + `SCRIPTRAG_*` env (see `.env.example`); optional env overrides for act breaks if needed.
 - `reconcile.py` at scale; Phase 3 production-complexity overlays — see `strategy.md` §6.

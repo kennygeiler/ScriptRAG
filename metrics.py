@@ -792,7 +792,7 @@ def get_top_characters_by_interaction_count(
                      count(oc) + count(ic) + count(ou) + count(iu) + count(oi) + count(ii) AS tot
                 WHERE tot > 0
                 RETURN c.id AS id, coalesce(c.name, '') AS name, tot
-                ORDER BY tot DESC
+                ORDER BY tot DESC, id ASC
                 LIMIT $k
                 """,
                 k=int(k),
@@ -826,7 +826,7 @@ def main() -> None:
         "--character",
         type=str,
         default=None,
-        help="Print passivity score for this character id (e.g. alan).",
+        help="Print passivity score for this character id (snake_case, e.g. from Neo4j :Character.id).",
     )
     parser.add_argument(
         "--props",

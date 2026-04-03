@@ -10,7 +10,7 @@ This milestone takes ScriptRAG from Cinema Four–centric defaults and brittle d
 - Integer phases (1, 2, 3, 4): Planned milestone work
 - Decimal phases (e.g. 2.1): Urgent insertions via `/gsd-insert-phase`
 
-- [ ] **Phase 1: Config & script-generalized dashboard** — Leads are **analysis-discerned** from the graph/metrics; optional env/project config **overrides**; script-agnostic copy across **all** Streamlit tabs (not dashboard-only).
+- [x] **Phase 1: Config & script-generalized dashboard** — Leads are **analysis-discerned** from the graph/metrics; optional env/project config **overrides**; script-agnostic copy across **all** Streamlit tabs (not dashboard-only).
 - [ ] **Phase 2: Graph reliability & empty states** — Empty, partial, or schema-skewed Neo4j never takes down Streamlit metric paths.
 - [ ] **Phase 3: Reconciliation for operators** — `reconcile.py` workflows are usable and documented at a defined scope with safe merge semantics.
 - [ ] **Phase 4: Production complexity signal** — Initial density- or structure-derived complexity/cost signal in app or CLI, alongside existing metrics.
@@ -67,7 +67,7 @@ This milestone takes ScriptRAG from Cinema Four–centric defaults and brittle d
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Config & script-generalized dashboard | 0/2 | Planned | - |
+| 1. Config & script-generalized dashboard | 2/2 | Complete | 2026-04-03 |
 | 2. Graph reliability & empty states | TBD | Not started | - |
 | 3. Reconciliation for operators | TBD | Not started | - |
 | 4. Production complexity signal | TBD | Not started | - |

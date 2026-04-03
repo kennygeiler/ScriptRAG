@@ -21,13 +21,13 @@ End-to-end, **evidence-backed** structural analysis of a screenplay in a queryab
 - ✓ **Streamlit product** — Pipeline, Cleanup Review, Efficiency Tracking, Dashboard, Investigate (`app.py`, `cleanup_review.py`, `agent.py`, `pipeline_runs.py`) — existing
 - ✓ **Pipeline run telemetry** as `:PipelineRun` nodes — existing
 - ✓ **Ask-the-graph** NL → Cypher path — existing (`agent.py`)
+- ✓ **Analysis-derived primary lead + env overrides** — `lead_resolution.py`, `SCRIPTRAG_PRIMARY_LEAD_ID` / `SCRIPTRAG_TOP_CHARACTERS`, Dashboard regression + sidebar (Phase 1 execute, 2026-04-03).
+- ✓ **Script-agnostic operator copy (Phase 1 scope)** — no hardcoded production character IDs in `app.py` UI strings; docs aligned (`MEMORY.md`, `strategy.md`).
 
 ### Active
 
-- [ ] **Analysis-derived leads + optional overrides** — primary lead(s) from structural graph/metrics analysis; env or project config to pin/adjust; remove hardcoded `PROTAGONIST_ID` as sole source (`strategy.md` §3, §6).
 - [ ] **Empty / partial graph hardening** — clear user messaging; no uncaught KeyErrors or broken DataFrame paths when Neo4j or artifacts are missing or incomplete (`strategy.md` §6).
 - [ ] **Reconciliation at scale** — expand `reconcile.py` usage from CLI/dashboard with safe merge patterns documented in UI (`strategy.md` §6).
-- [ ] **Script-agnostic UI copy (all tabs)** — reduce Cinema Four–specific defaults across Streamlit tabs and operator-facing helpers where metrics should generalize (`strategy.md` §1, §3).
 - [ ] **Phase 3 complexity signals** — initial production-oriented overlays from graph density without diluting structural truth (`strategy.md` §3 roadmap).
 
 ### Out of Scope
