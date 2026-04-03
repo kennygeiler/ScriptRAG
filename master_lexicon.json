@@ -69,6 +69,10 @@
       "name": "The General"
     },
     {
+      "id": "thomas",
+      "name": "Thomas"
+    },
+    {
       "id": "warren",
       "name": "Warren"
     },
@@ -119,6 +123,14 @@
       "name": "Tailor Shop"
     },
     {
+      "id": "theater",
+      "name": "Cinema Four Theater"
+    },
+    {
+      "id": "theater_bathroom",
+      "name": "Theater Bathroom"
+    },
+    {
       "id": "theater_lobby",
       "name": "Theater Lobby"
     },
@@ -127,12 +139,12 @@
       "name": "Theater Office"
     },
     {
-      "id": "zev_bedroom",
-      "name": "Zev's Bedroom"
-    },
-    {
       "id": "zev_house",
       "name": "Zev's House"
+    },
+    {
+      "id": "zev_room",
+      "name": "Zev's Room"
     }
   ]
 }

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-04-01T05:38:45.338899+00:00",
+  "updated_at": "2026-04-03T03:21:01.951499+00:00",
   "ingest": {
     "raw_scene_count": 86,
     "entries_count": 86,
@@ -97,8 +97,8 @@
     "last_touch_at": "2026-04-01T05:16:47.014279+00:00"
   },
   "neo4j_loader": {
-    "last_ok_at": "2026-04-01T05:38:45.337381+00:00",
-    "entries_loaded": 86,
-    "path": "validated_graph.json"
+    "last_ok_at": "2026-04-03T03:21:01.951468+00:00",
+    "entries_loaded": 3,
+    "path": "<in-memory>"
   }
 }

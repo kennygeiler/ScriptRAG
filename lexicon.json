@@ -17,6 +17,7 @@
     "tailor",
     "tatyana",
     "the_general",
+    "thomas",
     "warren",
     "william_clift_jr",
     "zev"
@@ -31,9 +32,11 @@
     "screening_room_balcony",
     "screening_room_orchestra",
     "tailor_shop",
+    "theater",
+    "theater_bathroom",
     "theater_lobby",
     "theater_office",
-    "zev_bedroom",
-    "zev_house"
+    "zev_house",
+    "zev_room"
   ]
 }
