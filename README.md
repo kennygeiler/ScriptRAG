@@ -46,7 +46,7 @@ full detail lives in [`strategy.md`](strategy.md). quick context: [`MEMORY.md`](
 | **ingest** | `ingest.py` + `schema.py` | **per scene**: claude + **instructor** → `SceneGraph`; two-phase self-healing (deterministic rules → llm auditors); edges need `source_id`, `target_id`, `type`, **`source_quote`**. |
 | **load** | `neo4j_loader.py` | merge `:Character` `:Location` `:Prop` `:Event`, `IN_SCENE`, narrative rels. |
 | **analyze** | `metrics.py` | parameterized cypher → momentum, payoff props, passivity windows, etc. |
-| **ui** | `app.py` | streamlit + plotly. four tabs: pipeline, editor agent, dashboard, investigate. |
+| **ui** | `app.py` | streamlit + plotly: pipeline, cleanup review, efficiency tracking, dashboard, investigate. |
 
 neo4j does **not** read english. it stores **nodes and edges**. streamlit asks **metrics**; metrics ask **cypher**.
 
@@ -146,18 +146,19 @@ errors trigger the **fixer** (up to 3 retries). warnings are saved for human rev
 | **completeness** | reads the raw scene text and compares it to the extracted graph—finds significant interactions, conflicts, or prop uses the extractor missed |
 | **attribution** | verifies `source_id` and `target_id` are the correct entities for the action described in each quote—catches swapped source/target |
 
-audit errors trigger the fixer (up to 2 retries, separate from phase 1). audit warnings go to the editor agent tab for human review.
+audit errors trigger the fixer (up to 2 retries, separate from phase 1). audit warnings go to **cleanup review** for human review.
 
 **cost:** ~$0.03/scene worst case (extraction + fixer + 3 auditors + audit fixer). deterministic checks are free. for an 86-scene script, roughly **$2.50 total**.
 
 ## dashboard
 
-wide-layout streamlit. four tabs:
+wide-layout streamlit. five tabs (plus **pipeline** when enabled):
 
 | tab | what it is |
 |-----|------------|
-| **pipeline** | upload `.fdx`, run full extraction in-process with live per-scene progress. the editor agent monitors every scene: shows pass/fix/fail status, running token + cost totals. |
-| **editor agent** | **corrections**: auto-fixed errors with before/after json diffs (from both deterministic and audit fixer). **warnings**: lexicon drift, duplicate rels, auditor flags for human review. summary metrics at top. "approve & load to neo4j" when satisfied. |
+| **pipeline** | upload `.fdx`, run full extraction in-process with live per-scene progress; pass/fix/fail status; telemetry metrics; saves a **:PipelineRun** row in neo4j after each run. |
+| **cleanup review** | plain-english **corrections** (what broke + compact before/after summaries). **warnings** with graph paths + approve/decline for qa. **approve & load to neo4j**. |
+| **pipeline efficiency tracking** | table of past runs from neo4j: scenes, corrections, warnings, **langsmith** tokens/cost (when tracing on), telemetry reference columns, agent opt. version. |
 | **dashboard** | **narrative momentum** (per-scene heat = `CONFLICTS_WITH / (INTERACTS_WITH + CONFLICTS_WITH)`, 3-scene rolling mean, dashed act boundaries), **payoff matrix** (long-horizon props > 10 scene gap), **power shift** (passivity index for top 5 characters by act). x/n scenes banner. `st.warning` if protagonist regresses. |
 | **investigate** | ask questions about the script's structure via natural language → cypher (`agent.py`). |
 
@@ -177,7 +178,7 @@ cp .env.example .env
 uv run streamlit run app.py
 ```
 
-open **http://localhost:8501**. upload your `.fdx` in the **pipeline** tab and click **run pipeline**. review corrections in the **editor agent** tab, then approve to load into neo4j.
+open **http://localhost:8501**. upload your `.fdx` in the **pipeline** tab and click **run pipeline**. review **cleanup review**, then approve to load into neo4j.
 
 ### cli alternative (headless)
 
@@ -221,7 +222,7 @@ there is **no** single button that provisions **both** neo4j aura and the app. a
 | 2 | push repo → [render](https://dashboard.render.com) **new → blueprint** → select repo → [`render.yaml`](render.yaml) → set secret `NEO4J_*` + `ANTHROPIC_API_KEY`. |
 | 3 | open the app, upload your `.fdx`, run the pipeline, approve, explore. |
 
-the blueprint uses **starter** + a **1 gb persistent disk** at `/var/data` so **pipeline efficiency** logs survive redeploys (`PERSISTENT_DATA_DIR=/var/data`). to use **free** tier instead, edit `render.yaml`: set `plan: free` and remove the `disk` block (logs then live only on ephemeral disk).
+the blueprint uses **starter** + a **1 gb persistent disk** at `/var/data` for optional file artifacts (`PERSISTENT_DATA_DIR=/var/data`). **pipeline efficiency** history is stored as **:PipelineRun** nodes in neo4j (not wiped when you load a screenplay). to use **free** tier instead, edit `render.yaml`: set `plan: free` and remove the `disk` block.
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy)
 
@@ -232,7 +233,7 @@ docker build -t scriptrag .
 docker run --rm -p 8501:8501 --env-file .env scriptrag
 ```
 
-`Dockerfile` respects **`PORT`** for render/fly/railway. `docker compose` mounts a named volume at `/var/data` for **`PERSISTENT_DATA_DIR`** (efficiency log); plain `docker run` without a volume keeps logs under `/app` until the container is removed.
+`Dockerfile` respects **`PORT`** for render/fly/railway. `docker compose` mounts a named volume at `/var/data` for **`PERSISTENT_DATA_DIR`**. pipeline efficiency rows live in neo4j as **:PipelineRun**; enable **langsmith** tracing to populate langsmith token/cost columns in the efficiency tab.
 
 ### one machine: neo4j + app
 
@@ -273,7 +274,10 @@ GraphRAG/
 ├── neo4j_loader.py            # json → neo4j (exports load_entries)
 ├── schema.py                  # pydantic graph contract
 ├── metrics.py                 # cypher analytics
-├── app.py                     # streamlit: pipeline + editor agent + dashboard + investigate
+├── app.py                     # streamlit: pipeline, cleanup review, efficiency, dashboard, investigate
+├── pipeline_runs.py           # :PipelineRun metrics in neo4j
+├── langsmith_usage.py         # aggregate tokens/cost from langsmith for a time window
+├── cleanup_review.py          # plain-english correction summaries + warning paths
 ├── agent.py                   # nl → cypher
 ├── Dockerfile
 ├── docker-compose.yml         # app → external neo4j / aura

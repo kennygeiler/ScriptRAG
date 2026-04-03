@@ -36,7 +36,8 @@ def _require_env(name: str) -> str:
 
 
 def _wipe_graph(tx: Any) -> None:
-    tx.run("MATCH (n) DETACH DELETE n")
+    """Remove screenplay graph only; keep :PipelineRun efficiency history."""
+    tx.run("MATCH (n) WHERE NOT n:PipelineRun DETACH DELETE n")
 
 
 def _merge_event(tx: Any, scene_number: int, heading: str) -> None:

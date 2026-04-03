@@ -15,7 +15,9 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from agent import ask_narrative_mri
-from ingest import SceneResult, build_system_prompt, extract_scenes
+from cleanup_review import plain_english_fix_reason, summarize_graph_delta, warning_json_location
+from ingest import build_system_prompt, extract_scenes
+from langsmith_usage import aggregate_langsmith_usage
 from lexicon import build_master_lexicon
 from metrics import (
     get_driver,
@@ -27,6 +29,7 @@ from metrics import (
 )
 from neo4j_loader import load_entries
 from parser import parse_fdx_to_raw_scenes, write_raw_scenes_json
+from pipeline_runs import list_pipeline_runs, save_pipeline_run
 
 ROLLING_SCENES = 3
 PAYOFF_MIN_SCENE_GAP = 10
@@ -38,18 +41,6 @@ _TARGET_FDX = _PROJECT_ROOT / "target_script.fdx"
 # Bump when you ship pipeline/agent optimizations (tracked in efficiency tab).
 AGENT_OPTIMIZATION_VERSION = 0
 
-
-def _pipeline_efficiency_log_path() -> Path:
-    """Prefer PERSISTENT_DATA_DIR (e.g. Render disk at /var/data) so logs survive redeploys."""
-    raw = os.environ.get("PERSISTENT_DATA_DIR", "").strip()
-    if raw:
-        base = Path(raw)
-        try:
-            base.mkdir(parents=True, exist_ok=True)
-        except OSError:
-            pass
-        return base / "pipeline_efficiency_log.json"
-    return _PROJECT_ROOT / "pipeline_efficiency_log.json"
 _PIPELINE_JSON_NAMES = (
     "raw_scenes.json",
     "master_lexicon.json",
@@ -65,26 +56,48 @@ def _env_truthy(name: str) -> bool:
 _PIPELINE_ENABLED = not _env_truthy("DISABLE_PIPELINE")
 
 
-def _load_efficiency_log() -> list[dict[str, Any]]:
-    path = _pipeline_efficiency_log_path()
-    if not path.is_file():
-        return []
+def _persist_pipeline_run(
+    *,
+    scenes_extracted: int,
+    total_scenes: int,
+    corrections_count: int,
+    warnings_count: int,
+    telemetry_tokens: int,
+    telemetry_cost_usd: float,
+    failed_scenes: int,
+    llm_auditors_enabled: bool,
+    pipeline_started_at: datetime | None,
+) -> bool:
+    ls_tokens, ls_cost = (0, 0.0)
+    if pipeline_started_at is not None:
+        ls_tokens, ls_cost = aggregate_langsmith_usage(
+            pipeline_started_at,
+            datetime.now(timezone.utc),
+        )
+    drv = None
     try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return []
-    return raw if isinstance(raw, list) else []
+        drv = get_driver()
+        save_pipeline_run(
+            drv,
+            scenes_extracted=scenes_extracted,
+            total_scenes=total_scenes,
+            corrections_count=corrections_count,
+            warnings_count=warnings_count,
+            langsmith_tokens=ls_tokens,
+            langsmith_cost_usd=ls_cost,
+            telemetry_tokens=telemetry_tokens,
+            telemetry_cost_usd=telemetry_cost_usd,
+            agent_optimization_version=AGENT_OPTIMIZATION_VERSION,
+            failed_scenes=failed_scenes,
+            llm_auditors_enabled=llm_auditors_enabled,
+        )
+        return True
+    except Exception:
+        return False
+    finally:
+        if drv is not None:
+            drv.close()
 
-
-def _append_efficiency_run(entry: dict[str, Any]) -> None:
-    path = _pipeline_efficiency_log_path()
-    rows = _load_efficiency_log()
-    rows.append(entry)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(rows, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
 
 # ---------------------------------------------------------------------------
 # Neo4j dashboard caching
@@ -438,7 +451,7 @@ _event_count = _cached_event_count(_DASH_STAMP)
 st.title("ScriptRAG")
 st.caption(
     "Upload a screenplay, extract a knowledge graph with a self-healing AI pipeline, "
-    "review the Editor Agent's corrections, then explore the data."
+    "review **Cleanup Review** (fixes + warnings), then explore the data."
 )
 
 if _flash := st.session_state.pop("_flash", None):
@@ -474,7 +487,7 @@ with st.sidebar:
 _tab_labels: list[str] = []
 if _PIPELINE_ENABLED:
     _tab_labels.append("Pipeline")
-_tab_labels += ["Editor Agent", "Pipeline Efficiency Tracking", "Dashboard", "Investigate"]
+_tab_labels += ["Cleanup Review", "Pipeline Efficiency Tracking", "Dashboard", "Investigate"]
 
 _tabs = st.tabs(_tab_labels)
 _ti = 0
@@ -496,7 +509,7 @@ if _PIPELINE_ENABLED:
         st.header("Pipeline")
         st.caption(
             "Upload a Final Draft (.fdx) screenplay then run the full extraction pipeline. "
-            "The Editor Agent monitors every scene: **extract → validate → fix → audit**."
+            "Each scene runs **extract → validate → fix → optional LLM audit**; metrics are saved to Neo4j after each run."
         )
 
         _up = st.file_uploader(
@@ -593,6 +606,8 @@ For an 86-scene script: **~$0.85 fast** or **~$2.50 full audit**.
             key="pipeline_run",
             disabled=not _TARGET_FDX.is_file(),
         ):
+            st.session_state["pipeline_run_started_at"] = datetime.now(timezone.utc)
+            st.session_state["cleanup_warning_decisions"] = {}
             with st.status("Pipeline running…", expanded=True) as pipe_status:
                 progress = st.progress(0, text="Starting…")
                 scene_log = st.container()
@@ -713,21 +728,23 @@ For an 86-scene script: **~$0.85 fast** or **~$2.50 full audit**.
                         "tokens": cum_tokens,
                         "cost": cum_cost,
                     }
-                    try:
-                        _append_efficiency_run({
-                            "ts": datetime.now(timezone.utc).isoformat(),
-                            "scenes_extracted": len(all_entries),
-                            "total_scenes": total,
-                            "corrections": len(corrections),
-                            "warnings": len(all_warnings),
-                            "total_tokens": cum_tokens,
-                            "estimated_cost": round(cum_cost, 6),
-                            "agent_optimization_version": AGENT_OPTIMIZATION_VERSION,
-                            "failed_scenes": failed_count,
-                            "llm_auditors_enabled": bool(_enable_audit),
-                        })
-                    except OSError:
-                        pass
+                    _t0 = st.session_state.pop("pipeline_run_started_at", None)
+                    _saved = _persist_pipeline_run(
+                        scenes_extracted=len(all_entries),
+                        total_scenes=total,
+                        corrections_count=len(corrections),
+                        warnings_count=len(all_warnings),
+                        telemetry_tokens=cum_tokens,
+                        telemetry_cost_usd=cum_cost,
+                        failed_scenes=failed_count,
+                        llm_auditors_enabled=bool(_enable_audit),
+                        pipeline_started_at=_t0 if isinstance(_t0, datetime) else None,
+                    )
+                    if not _saved:
+                        st.warning(
+                            "Pipeline finished but **efficiency metrics were not saved** to Neo4j "
+                            "(check connection, credentials, and that the DB allows new labels)."
+                        )
 
             pr = st.session_state.get("pipeline_results")
             if pr:
@@ -739,9 +756,9 @@ For an 86-scene script: **~$0.85 fast** or **~$2.50 full audit**.
                 with c3:
                     st.metric("Warnings", len(pr.get("warnings", [])))
                 with c4:
-                    st.metric("Total tokens", f"{pr['tokens']:,}")
+                    st.metric("Telemetry tokens", f"{pr['tokens']:,}")
                 with c5:
-                    st.metric("Estimated cost", f"${pr['cost']:.4f}")
+                    st.metric("Telemetry cost", f"${pr['cost']:.4f}")
 
                 if pr["corrections"] or pr.get("warnings"):
                     parts = []
@@ -750,13 +767,13 @@ For an 86-scene script: **~$0.85 fast** or **~$2.50 full audit**.
                     if pr.get("warnings"):
                         parts.append(f"**{len(pr['warnings'])}** warning(s)")
                     st.info(
-                        f"The Editor Agent flagged {' and '.join(parts)}. "
-                        "Review them in the **Editor Agent** tab, then approve to load into Neo4j."
+                        f"Cleanup Review: {' and '.join(parts)}. "
+                        "Open the **Cleanup Review** tab, then approve to load into Neo4j."
                     )
                 elif pr["extracted"] > 0:
                     st.success(
                         "All scenes passed validation on the first try. "
-                        "Head to the **Editor Agent** tab to approve and load into Neo4j."
+                        "Head to **Cleanup Review** to approve and load into Neo4j."
                     )
 
         elif not _TARGET_FDX.is_file():
@@ -764,25 +781,30 @@ For an 86-scene script: **~$0.85 fast** or **~$2.50 full audit**.
 
 
 # ===================================================================
-# TAB: Editor Agent
+# TAB: Cleanup Review
 # ===================================================================
 
 with tab_editor:
-    st.header("Editor Agent")
+    st.header("Cleanup Review")
     st.caption(
-        "Review the AI's self-corrections and warnings before loading data into Neo4j."
+        "**Corrections:** what broke, in plain English, plus a compact before/after summary (not raw JSON). "
+        "**Warnings:** where in the extracted graph the flag applies — approve (acknowledged) or decline (false positive)."
     )
 
     pr = st.session_state.get("pipeline_results")
     if not pr:
         st.info("No pipeline results yet. Run the pipeline first.")
     else:
+        if "cleanup_warning_decisions" not in st.session_state:
+            st.session_state["cleanup_warning_decisions"] = {}
+        wd = st.session_state["cleanup_warning_decisions"]
+
         n_corrections = len(pr["corrections"])
         n_warnings = len(pr.get("warnings", []))
         st.markdown(
             f"**{pr['extracted']}** scenes extracted — "
-            f"**{n_corrections}** error(s) auto-fixed, "
-            f"**{n_warnings}** warning(s) for review, "
+            f"**{n_corrections}** scene(s) with auto-fixes, "
+            f"**{n_warnings}** warning(s), "
             f"**{pr['failed']}** failed."
         )
 
@@ -791,25 +813,36 @@ with tab_editor:
             for corr in pr["corrections"]:
                 sn = corr["scene_number"]
                 heading = corr["heading"] or "untitled"
-                with st.expander(f"Scene {sn} — {heading}", expanded=True):
+                with st.expander(f"Scene {sn} — {heading}", expanded=False):
                     for entry in corr["audit_entries"]:
                         node = entry.get("node", "?")
                         detail = entry.get("detail", "")
 
                         if node in ("fixer", "audit_fixer"):
-                            label = "Audit Fixer" if node == "audit_fixer" else "Fixer"
-                            st.markdown(f"**{label}** — attempt {entry.get('attempt', '?')}")
-                            col_before, col_after = st.columns(2)
-                            with col_before:
-                                st.caption("Before (broken)")
-                                st.json(entry.get("before", {}))
-                            with col_after:
-                                st.caption("After (fixed)")
-                                st.json(entry.get("after", {}))
-                            if entry.get("reason"):
-                                st.caption(f"Reason: {entry['reason']}")
+                            label = "Audit fixer" if node == "audit_fixer" else "Schema / rules fixer"
+                            reason = str(entry.get("reason") or "")
+                            st.markdown(f"#### {label} (attempt {entry.get('attempt', '?')})")
+                            st.markdown("**What was wrong**")
+                            st.write(plain_english_fix_reason(reason))
+                            if reason and len(reason) < 600:
+                                with st.expander("Technical detail from validator"):
+                                    st.code(reason, language="text")
+                            before_g = entry.get("before") or {}
+                            after_g = entry.get("after") or {}
+                            if isinstance(before_g, dict) and isinstance(after_g, dict):
+                                bsum, asum = summarize_graph_delta(before_g, after_g)
+                                c1, c2 = st.columns(2)
+                                with c1:
+                                    st.markdown("**Before** (summary)")
+                                    st.markdown(bsum)
+                                with c2:
+                                    st.markdown("**After** (summary)")
+                                    st.markdown(asum)
                         elif node == "audit" and entry.get("findings"):
-                            st.markdown(f"**Audit** — {entry.get('error_count', 0)} error(s), {entry.get('warning_count', 0)} warning(s)")
+                            st.markdown(
+                                f"**Audit pass** — {entry.get('error_count', 0)} error(s), "
+                                f"{entry.get('warning_count', 0)} warning(s) in findings"
+                            )
                             for f in entry["findings"]:
                                 icon = "🔴" if f.get("severity") == "error" else "🟡"
                                 st.markdown(f"{icon} **{f.get('check', '?')}** — {f.get('detail', '')}")
@@ -822,17 +855,41 @@ with tab_editor:
                             st.markdown(f"**{node}** — {detail}")
                         st.divider()
         else:
-            st.success("No corrections needed — all scenes passed validation cleanly.")
+            st.success("No fixer corrections — every scene passed deterministic checks without a rewrite.")
 
         warnings_list = pr.get("warnings", [])
+        entries = pr.get("entries", [])
         if warnings_list:
             st.subheader(f"Warnings ({n_warnings})")
-            st.caption("These items did not block the pipeline but may need human review.")
-            for w in warnings_list:
-                sn_label = f"Scene {w['scene_number']}" if w.get("scene_number") else ""
+            st.caption(
+                "Approve = you accept this flag for the record. Decline = you judge it a false positive. "
+                "Either way the graph below is unchanged until you load to Neo4j; use this for your own QA trail."
+            )
+            for wi, w in enumerate(warnings_list):
+                if not isinstance(w, dict):
+                    continue
+                wid = f"s{w.get('scene_number', 0)}_i{wi}_{w.get('check', 'x')}"
+                wid = "".join(c if c.isalnum() else "_" for c in wid)
+                loc = warning_json_location(w, entries)
                 check = w.get("check", "unknown")
                 detail = w.get("detail", "")
-                st.warning(f"**{check}** {f'({sn_label})' if sn_label else ''} — {detail}")
+                st.markdown(f"**{check}** — {detail}")
+                st.caption(f"📍 {loc}")
+                current = wd.get(wid, "unset")
+                r1, r2, r3 = st.columns([1, 1, 4])
+                with r1:
+                    if st.button("Approve", key=f"cw_ok_{wid}", type="primary" if current == "approved" else "secondary"):
+                        wd[wid] = "approved"
+                        st.rerun()
+                with r2:
+                    if st.button("Decline", key=f"cw_no_{wid}", type="primary" if current == "declined" else "secondary"):
+                        wd[wid] = "declined"
+                        st.rerun()
+                if current == "approved":
+                    st.success("Marked **approved**.")
+                elif current == "declined":
+                    st.info("Marked **declined** (false positive).")
+                st.divider()
 
         st.divider()
 
@@ -864,48 +921,67 @@ with tab_editor:
 
 with tab_efficiency:
     st.header("Pipeline Efficiency Tracking")
-    _log_path = _pipeline_efficiency_log_path()
     st.caption(
-        f"Each completed pipeline run is appended to **`{_log_path.name}`** "
-        f"under `{_log_path.parent}` (set **`PERSISTENT_DATA_DIR`** on Render with a disk so history survives redeploys). "
-        f"Optimization version **{AGENT_OPTIMIZATION_VERSION}** — bump `AGENT_OPTIMIZATION_VERSION` in `app.py` when you ship improvements."
+        "Each completed pipeline run is stored as a **:PipelineRun** node in Neo4j (not wiped when you load a screenplay). "
+        "**LangSmith tokens / cost** are aggregated from traced LLM runs in your project between pipeline start and finish "
+        "(requires `LANGCHAIN_TRACING_V2=true` and `LANGCHAIN_API_KEY`). "
+        "**Telemetry** columns mirror in-process Anthropic usage from the app. "
+        f"Bump **`AGENT_OPTIMIZATION_VERSION`** in `app.py` when you ship pipeline improvements (current: **{AGENT_OPTIMIZATION_VERSION}**)."
     )
-    rows = _load_efficiency_log()
+    try:
+        _drv_eff = get_driver()
+        try:
+            rows = list_pipeline_runs(_drv_eff, limit=500)
+        finally:
+            _drv_eff.close()
+    except Exception as exc:
+        rows = []
+        st.error(f"Could not read pipeline runs from Neo4j: {exc}")
+
     if not rows:
-        st.info("No runs logged yet. Complete a pipeline run in the **Pipeline** tab to record metrics.")
+        st.info(
+            "No runs logged yet. Complete a pipeline run in the **Pipeline** tab (Neo4j must be reachable)."
+        )
     else:
+        chronological = list(reversed(rows))
         display: list[dict[str, Any]] = []
-        for r in reversed(rows):
+        for r in rows:
             if not isinstance(r, dict):
                 continue
-            ext = r.get("scenes_extracted", 0)
-            tot = r.get("total_scenes", 0)
+            ext = int(r.get("scenes_extracted", 0) or 0)
+            tot = int(r.get("total_scenes", 0) or 0)
+            ls_tok = int(r.get("langsmith_tokens", 0) or 0)
+            ls_cost = float(r.get("langsmith_cost_usd", 0) or 0)
+            tel_tok = int(r.get("telemetry_tokens", 0) or 0)
+            tel_cost = float(r.get("telemetry_cost_usd", 0) or 0)
             display.append({
-                "Run (UTC)": r.get("ts", "")[:19].replace("T", " "),
+                "Run (UTC)": str(r.get("ts", ""))[:19].replace("T", " "),
                 "Scenes extracted": f"{ext} / {tot}" if tot else str(ext),
-                "Corrections": r.get("corrections", 0),
-                "Warnings": r.get("warnings", 0),
-                "Total tokens": r.get("total_tokens", 0),
-                "Estimated cost ($)": r.get("estimated_cost", 0.0),
-                "Agent opt. version": r.get("agent_optimization_version", 0),
-                "Auditors on": "yes" if r.get("llm_auditors_enabled") else "no",
-                "Failed scenes": r.get("failed_scenes", 0),
+                "Corrections": int(r.get("corrections_count", 0) or 0),
+                "Warnings": int(r.get("warnings_count", 0) or 0),
+                "LangSmith tokens": ls_tok,
+                "LangSmith cost ($)": round(ls_cost, 4),
+                "Telemetry tokens": tel_tok,
+                "Telemetry cost ($)": round(tel_cost, 4),
+                "Agent opt. ver.": int(r.get("agent_optimization_version", 0) or 0),
+                "Auditors": "yes" if r.get("llm_auditors_enabled") else "no",
+                "Failed scenes": int(r.get("failed_scenes", 0) or 0),
             })
         df = pd.DataFrame(display)
         st.dataframe(df, use_container_width=True, hide_index=True)
 
-        costs = [float(r.get("estimated_cost", 0) or 0) for r in rows if isinstance(r, dict)]
-        tokens = [int(r.get("total_tokens", 0) or 0) for r in rows if isinstance(r, dict)]
-        if len(costs) >= 2:
+        ls_costs = [float(r.get("langsmith_cost_usd", 0) or 0) for r in chronological]
+        ls_tokens = [int(r.get("langsmith_tokens", 0) or 0) for r in chronological]
+        if len(ls_costs) >= 2 and any(ls_costs):
             fig = go.Figure()
             fig.add_trace(go.Scatter(
-                y=costs,
+                y=ls_costs,
                 mode="lines+markers",
-                name="Estimated cost ($)",
+                name="LangSmith est. cost ($)",
                 line=dict(color="#FF4B4B"),
             ))
             fig.update_layout(
-                title="Estimated cost per run (chronological)",
+                title="LangSmith-estimated cost per run (chronological)",
                 xaxis_title="Run index",
                 yaxis_title="USD",
                 height=320,
@@ -913,15 +989,16 @@ with tab_efficiency:
             )
             st.plotly_chart(fig, use_container_width=True)
 
+        if len(ls_tokens) >= 2 and any(ls_tokens):
             fig2 = go.Figure()
             fig2.add_trace(go.Scatter(
-                y=tokens,
+                y=ls_tokens,
                 mode="lines+markers",
-                name="Total tokens",
+                name="LangSmith tokens",
                 line=dict(color="#1f77b4"),
             ))
             fig2.update_layout(
-                title="Total tokens per run (chronological)",
+                title="LangSmith token totals per run (chronological)",
                 xaxis_title="Run index",
                 yaxis_title="Tokens",
                 height=320,
@@ -952,7 +1029,7 @@ with tab_dashboard:
             )
     else:
         st.info(
-            "No scene data in Neo4j yet. Run the **Pipeline**, review in the **Editor Agent**, "
+            "No scene data in Neo4j yet. Run the **Pipeline**, review **Cleanup Review**, "
             "then **Approve & Load** to populate the dashboard."
         )
 
