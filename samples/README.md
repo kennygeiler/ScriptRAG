@@ -5,7 +5,7 @@ Use these files for a **first run** without hunting for a script. ScriptRAG only
 | Folder | Contents | Notes |
 |--------|----------|--------|
 | **`cinema-four/`** | `Cinema_Four.fdx`, `Cinema_Four.pdf` | Full-length sample (~86 scenes). Same screenplay used heavily in development. |
-| **`ludwig/`** | `Ludwig.fdx`, `Ludwig.pdf` | **Short original micro-sample** (3 scenes) for a **fast** pipeline demo. Not affiliated with any produced film; replace with your own script if you prefer. |
+| **`ludwig/`** | `Ludwig.fdx`, `Ludwig.pdf` | **Short original micro-sample** (12 scenes) for a **fast** pipeline demo. Not affiliated with any produced film; replace with your own script if you prefer. |
 
 **Quick test:** copy a sample to the repo root as `target_script.fdx`, or upload the `.fdx` in the **Pipeline** tab.
 
