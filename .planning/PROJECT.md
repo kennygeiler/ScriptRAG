@@ -12,11 +12,15 @@ End-to-end, **evidence-backed** structural analysis of a screenplay in a queryab
 
 ## Current milestones
 
-### v1.2 — Demo & data-out flow (execution focus)
+### v1.3 — Verify HITL depth (in progress)
+
+**Goal:** Faster, safer **Verify**: graph evidence on cards, entity labels, Approve preview, scene grouping; later filter/bulk (HITL-02) and decision export (HITL-03). See `.planning/ROADMAP.md` Phases 11–13.
+
+### v1.2 — Demo & data-out flow (complete)
 
 **Goal:** Linear story for technical demos: **self-healing extraction → HITL → manipulable graph data** (schema, recipe SQL/Cypher, CSV), with analytics tabs as follow-ons.
 
-**Target features:** **OUT-01** (Data out tab + `data_out.py`), **FLOW-01** (Cleanup + Efficiency narrative), **DEMO-01** (optional demo tab layout). See `.planning/ROADMAP.md` Phases 8–10.
+**Shipped:** **OUT-01**, **FLOW-01**, **DEMO-01** (Phases 8–10).
 
 ### v1.1 — Quality, tests & open-source hygiene (parallel)
 
@@ -40,10 +44,12 @@ End-to-end, **evidence-backed** structural analysis of a screenplay in a queryab
 - ✓ **Data out / manipulable sink (OUT-01)** — `data_out.py`, **Data out** tab: schema card, recipe Cypher, CSV exports (v1.2 Phase 8, 2026-04-03).
 - ✓ **HITL + observability copy (FLOW-01)** — Cleanup Review HITL banner; Efficiency observability caption (v1.2 Phase 9, 2026-04-03).
 - ✓ **Demo layout flag (DEMO-01)** — `SCRIPTRAG_DEMO_LAYOUT` tab order + copy (v1.2 Phase 10, 2026-04-03).
+- ✓ **Verify HITL evidence (HITL-01)** — Approve preview, evidence expander, scene grouping, no-auto-edit banners (`cleanup_review.py` + `app.py` Verify; v1.3 Phase 11, 2026-04-03).
 
 ### Active
 
-- (v1.2 Phases 8–10 complete — see **v1.1** for QA/LICENSE/Levenshtein.)
+- **v1.3 Phases 12–13** — HITL workflow scale + audit trail (see ROADMAP).
+- **v1.1** — QA/LICENSE/Levenshtein (Phases 5–7).
 - [ ] **QA-01 / QA-02** — Unit tests for structural load and reconcile scan (mocked driver); see `.planning/REQUIREMENTS.md` v1.1.
 - [ ] **DOC-01** — LICENSE + README license alignment.
 - [ ] **PERF-01** — Optional Levenshtein acceleration for fuzzy reconcile; document in README.
@@ -97,4 +103,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-03 — v1.2 demo/data-out roadmap added; Phase 8 (`data_out.py`, **Data out** tab) started.*
+*Last updated: 2026-04-03 — v1.3 roadmap + Phase 11 HITL-01 (Verify evidence cards).*

@@ -36,7 +36,10 @@ def save_pipeline_run(
     llm_auditors_enabled: bool,
     fdx_filename: str = "",
 ) -> str:
-    """Write one run record. Returns the new run id."""
+    """Write one run record. Returns the new run id.
+
+    ``fdx_filename`` should be the **original name from the Streamlit file uploader**, not the on-disk ``target_script.fdx`` path.
+    """
     run_id = str(uuid.uuid4())
     ts = datetime.now(timezone.utc).isoformat()
     with driver.session() as session:

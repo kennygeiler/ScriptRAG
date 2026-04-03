@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,8 @@ from cleanup_review import (
     plain_english_fix_reason,
     summarize_graph_delta,
     warning_check_title,
+    warning_hitl_approve_preview,
+    warning_hitl_evidence_markdown,
     warning_json_location,
     warning_verify_guidance,
 )
@@ -608,11 +611,12 @@ The hallucinated-quote check substring-matches each `source_quote` against the s
                         "tokens": int(cum_tokens or 0),
                         "cost": float(cum_cost or 0.0),
                     }
+                    # Efficiency "filename" is the uploader's original .fdx name only — not on-disk target_script.fdx.
+                    if _up is not None:
+                        st.session_state["pipeline_source_fdx_name"] = _up.name
                     _fdx_name = str(
-                        (_up.name if _up is not None else None)
-                        or st.session_state.get("pipeline_source_fdx_name")
-                        or _TARGET_FDX.name
-                    )
+                        st.session_state.get("pipeline_source_fdx_name") or ""
+                    ).strip()
                     _saved = _persist_pipeline_run(
                         scenes_extracted=len(all_entries),
                         total_scenes=total,
@@ -710,49 +714,87 @@ if _active == "Verify":
         if warnings_list:
             st.subheader(f"Warnings to verify ({n_warnings})")
             st.caption(
-                "Each card explains **what the check means** and what **Approve** does. "
-                "Use **Decline** when the graph is correct as-is."
+                "Cards are **grouped by scene**. Each card has an **Approve preview**, pipeline text, "
+                "and optional **evidence** from the extracted graph. Use **Decline** when the graph is correct as-is."
             )
+            by_scene: dict[int, list[tuple[int, dict[str, Any]]]] = defaultdict(list)
             for wi, w in enumerate(warnings_list):
                 if not isinstance(w, dict):
                     continue
-                wid = cleanup_warning_widget_id(w, wi)
-                loc = warning_json_location(w, entries)
-                check_raw = str(w.get("check", "unknown"))
-                title = warning_check_title(check_raw)
-                detail = str(w.get("detail", "") or "")
-                sev = str(w.get("severity", "") or "").strip()
-                with st.container(border=True):
-                    st.markdown(f"**{title}** (`{check_raw}`)")
-                    if sev:
-                        st.caption(f"Severity from pipeline: **{sev}**")
-                    st.markdown(warning_verify_guidance(check_raw))
-                    st.markdown("**What the pipeline reported**")
-                    st.write(detail if detail else "_(no detail text)_")
-                    st.caption("Location in extracted JSON")
-                    st.code(loc, language="text")
-                    current = wd.get(wid, "unset")
-                    r1, r2 = st.columns(2)
-                    with r1:
-                        if st.button(
-                            "Approve — apply fix",
-                            key=f"cw_ok_{wid}",
-                            type="primary" if current == "approved" else "secondary",
-                        ):
-                            wd[wid] = "approved"
-                            st.rerun()
-                    with r2:
-                        if st.button(
-                            "Decline — keep graph",
-                            key=f"cw_no_{wid}",
-                            type="primary" if current == "declined" else "secondary",
-                        ):
-                            wd[wid] = "declined"
-                            st.rerun()
-                    if current == "approved":
-                        st.success("**Approved** — this edit will run on **Approve & Load**.")
-                    elif current == "declined":
-                        st.info("**Declined** — treated as false positive; no edit from this warning.")
+                try:
+                    sn_key = int(w.get("scene_number"))
+                except (TypeError, ValueError):
+                    sn_key = -1
+                by_scene[sn_key].append((wi, w))
+
+            scene_order = sorted(k for k in by_scene if k >= 0)
+            if -1 in by_scene:
+                scene_order.append(-1)
+
+            def _scene_heading(sn_i: int) -> str:
+                if sn_i < 0:
+                    return "Warnings (scene unknown)"
+                for e in entries:
+                    if not isinstance(e, dict):
+                        continue
+                    try:
+                        if int(e.get("scene_number") or -1) != sn_i:
+                            continue
+                    except (TypeError, ValueError):
+                        continue
+                    h = str(e.get("heading") or "").strip()
+                    return f"Scene {sn_i} — {h}" if h else f"Scene {sn_i}"
+                return f"Scene {sn_i}"
+
+            for sn_key in scene_order:
+                st.markdown(f"##### {_scene_heading(sn_key)}")
+                for wi, w in by_scene[sn_key]:
+                    wid = cleanup_warning_widget_id(w, wi)
+                    loc = warning_json_location(w, entries)
+                    check_raw = str(w.get("check", "unknown"))
+                    title = warning_check_title(check_raw)
+                    detail = str(w.get("detail", "") or "")
+                    sev = str(w.get("severity", "") or "").strip()
+                    no_auto = check_raw in ("completeness", "audit_skipped")
+                    with st.container(border=True):
+                        if no_auto:
+                            st.warning(
+                                "**No automatic graph edit** for this check — **Approve** is acknowledgment "
+                                "only before load (see preview below)."
+                            )
+                        st.markdown(f"**{title}** (`{check_raw}`)")
+                        if sev:
+                            st.caption(f"Severity from pipeline: **{sev}**")
+                        st.info(f"**Approve preview:** {warning_hitl_approve_preview(w, entries)}")
+                        st.markdown(warning_verify_guidance(check_raw))
+                        st.markdown("**What the pipeline reported**")
+                        st.write(detail if detail else "_(no detail text)_")
+                        st.caption("Location in extracted JSON")
+                        st.code(loc, language="text")
+                        with st.expander("Evidence from extracted graph", expanded=False):
+                            st.markdown(warning_hitl_evidence_markdown(w, entries))
+                        current = wd.get(wid, "unset")
+                        r1, r2 = st.columns(2)
+                        with r1:
+                            if st.button(
+                                "Approve — apply fix",
+                                key=f"cw_ok_{wid}",
+                                type="primary" if current == "approved" else "secondary",
+                            ):
+                                wd[wid] = "approved"
+                                st.rerun()
+                        with r2:
+                            if st.button(
+                                "Decline — keep graph",
+                                key=f"cw_no_{wid}",
+                                type="primary" if current == "declined" else "secondary",
+                            ):
+                                wd[wid] = "declined"
+                                st.rerun()
+                        if current == "approved":
+                            st.success("**Approved** — this edit will run on **Approve & Load**.")
+                        elif current == "declined":
+                            st.info("**Declined** — treated as false positive; no edit from this warning.")
         else:
             st.success("No warnings — nothing to verify. You can load below.")
 
@@ -1056,6 +1098,7 @@ if _active == "Pipeline Efficiency Tracking":
     st.caption(
         "**Agentic pipeline observability:** each finished run is a **:PipelineRun** row in Neo4j (survives screenplay reloads). "
         "Use it like production extractor metrics — **tokens**, **estimated cost**, correction/warning counts, scenes processed. "
+        "**Uploaded .fdx** is the name from the Pipeline file uploader (— if the run did not go through an upload in that session). "
         f"Bump **`AGENT_OPTIMIZATION_VERSION`** in `app.py` when you ship pipeline improvements (current: **{AGENT_OPTIMIZATION_VERSION}**)."
     )
     try:
@@ -1084,7 +1127,7 @@ if _active == "Pipeline Efficiency Tracking":
             _fn = r.get("fdx_filename")
             display.append({
                 "Run (UTC)": str(r.get("ts", ""))[:19].replace("T", " "),
-                "Filename": str(_fn).strip() if _fn else "—",
+                "Uploaded .fdx": str(_fn).strip() if _fn else "—",
                 "Scenes extracted": f"{ext} / {tot}" if tot else str(ext),
                 "Corrections": int(r.get("corrections_count", 0) or 0),
                 "Warnings": int(r.get("warnings_count", 0) or 0),

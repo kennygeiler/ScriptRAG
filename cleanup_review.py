@@ -45,6 +45,219 @@ def warning_verify_guidance(check: str) -> str:
     )
 
 
+def _truncate_hitl_text(text: str, max_chars: int = 420) -> str:
+    t = (text or "").strip()
+    if len(t) <= max_chars:
+        return t
+    return t[: max_chars - 1].rstrip() + "…"
+
+
+def graph_entity_labels(graph: dict[str, Any]) -> dict[str, str]:
+    """Map node id → short markdown label (display name + kind)."""
+    out: dict[str, str] = {}
+    nodes = graph.get("nodes")
+    if not isinstance(nodes, list):
+        return out
+    for n in nodes:
+        if not isinstance(n, dict):
+            continue
+        nid = str(n.get("id", "")).strip()
+        if not nid:
+            continue
+        kind = str(n.get("kind", "?"))
+        name = str(n.get("name", "")).strip()
+        if name:
+            out[nid] = f"**{name}** (`{nid}`, {kind})"
+        else:
+            out[nid] = f"`{nid}` ({kind})"
+    return out
+
+
+def _graph_for_warning_scene(
+    warning: dict[str, Any], entries: list[dict[str, Any]]
+) -> dict[str, Any] | None:
+    sn = warning.get("scene_number")
+    if sn is None:
+        return None
+    try:
+        sn_i = int(sn)
+    except (TypeError, ValueError):
+        return None
+    for e in entries:
+        if not isinstance(e, dict):
+            continue
+        try:
+            if int(e.get("scene_number") or -1) != sn_i:
+                continue
+        except (TypeError, ValueError):
+            continue
+        g = e.get("graph")
+        if isinstance(g, dict):
+            return g
+    return None
+
+
+def _relationship_rows_matching_key(
+    graph: dict[str, Any], key: tuple[str, str, str]
+) -> list[tuple[int, dict[str, Any]]]:
+    rels = graph.get("relationships")
+    if not isinstance(rels, list):
+        return []
+    out: list[tuple[int, dict[str, Any]]] = []
+    for i, r in enumerate(rels):
+        if not isinstance(r, dict):
+            continue
+        t = (str(r.get("source_id", "")), str(r.get("target_id", "")), str(r.get("type", "")))
+        if t == key:
+            out.append((i, r))
+    return out
+
+
+def warning_hitl_approve_preview(
+    warning: dict[str, Any], entries: list[dict[str, Any]]
+) -> str:
+    """One-line description of what Approve does when loading (Verify tab)."""
+    check = str(warning.get("check", ""))
+    detail = str(warning.get("detail", ""))
+    graph = _graph_for_warning_scene(warning, entries)
+
+    if check == "duplicate_relationship" and graph:
+        key = _parse_duplicate_key(detail)
+        if key:
+            rows = _relationship_rows_matching_key(graph, key)
+            n = len(rows)
+            if n >= 2:
+                return (
+                    f"Merges **{n}** duplicate `{key[2]}` rows "
+                    f"(`{key[0]}` → `{key[1]}`) into **one** edge; combines `source_quote` with `---`."
+                )
+        return "Merges duplicate rows for the same (source, target, type) into one edge with combined quotes."
+
+    if check == "lexicon_compliance" and graph:
+        nid = _lexicon_id_from_detail(detail)
+        labels = graph_entity_labels(graph)
+        if nid:
+            lab = labels.get(nid, f"`{nid}`")
+            return f"Removes {lab} and every relationship connected to that id."
+        return "Removes the non-lexicon node and all incident edges."
+
+    if check in ("quote_fidelity", "attribution"):
+        sn = warning.get("scene_number")
+        if sn is None:
+            return "Removes one relationship flagged by this warning (see evidence below)."
+        try:
+            sn_i = int(sn)
+        except (TypeError, ValueError):
+            return "Removes one relationship flagged by this warning (see evidence below)."
+        orig_e = None
+        for e in entries:
+            if not isinstance(e, dict):
+                continue
+            try:
+                if int(e.get("scene_number") or -1) == sn_i:
+                    orig_e = e
+                    break
+            except (TypeError, ValueError):
+                continue
+        if not orig_e or not isinstance(orig_e.get("graph"), dict):
+            return "Removes one relationship identified by this warning."
+        ident = _rel_identity_from_original(orig_e["graph"], warning.get("relationship_index"))
+        if ident:
+            t, s, tid = ident
+            return f"Removes **one** `{t}` edge: `{s}` → `{tid}`."
+        return "Removes one relationship identified by this warning."
+
+    if check == "completeness":
+        return "**No graph change** — acknowledgment only; edit JSON manually if you add edges."
+
+    if check == "audit_skipped":
+        return "**No graph change** — informational only."
+
+    return warning_verify_guidance(check)
+
+
+def warning_hitl_evidence_markdown(
+    warning: dict[str, Any], entries: list[dict[str, Any]]
+) -> str:
+    """Markdown body for the Verify tab evidence expander."""
+    check = str(warning.get("check", ""))
+    detail = str(warning.get("detail", ""))
+    graph = _graph_for_warning_scene(warning, entries)
+    if graph is None:
+        return "_No scene graph found in the current extract for this warning._"
+
+    labels = graph_entity_labels(graph)
+
+    if check == "duplicate_relationship":
+        key = _parse_duplicate_key(detail)
+        if not key:
+            return "_Could not parse duplicate tuple from pipeline detail._\n\n" f"> {detail}"
+        rows = _relationship_rows_matching_key(graph, key)
+        if not rows:
+            return f"_No matching relationships in graph for `{key}`._\n\n> {detail}"
+        parts: list[str] = [
+            f"**Duplicate tuple:** `{key[0]}` —(`{key[2]}`)→ `{key[1]}` "
+            f"({len(rows)} row(s) in this scene)."
+        ]
+        for i, r in rows:
+            sq = _truncate_hitl_text(str(r.get("source_quote", "")), 500)
+            sid = str(r.get("source_id", ""))
+            tid = str(r.get("target_id", ""))
+            parts.append(f"- **Index `{i}`** · {labels.get(sid, f'`{sid}`')} → {labels.get(tid, f'`{tid}`')}")
+            parts.append("")
+            parts.append("```text")
+            parts.append(sq if sq else "(empty source_quote)")
+            parts.append("```")
+        return "\n".join(parts)
+
+    if check == "lexicon_compliance":
+        nid = _lexicon_id_from_detail(detail)
+        nodes = graph.get("nodes") if isinstance(graph.get("nodes"), list) else []
+        if not nid:
+            return f"_Could not parse node id._\n\n> {detail}"
+        for i, n in enumerate(nodes):
+            if isinstance(n, dict) and str(n.get("id")) == nid:
+                kind = str(n.get("kind", "?"))
+                name = str(n.get("name", ""))
+                return (
+                    f"**Node** `graph.nodes[{i}]` · id `{nid}` · kind **{kind}** · "
+                    f"name **{name or '—'}**\n\n> {detail}"
+                )
+        return f"_Node `{nid}` not listed in this scene graph._\n\n> {detail}"
+
+    if check in ("quote_fidelity", "attribution", "completeness"):
+        idx = warning.get("relationship_index")
+        rels = graph.get("relationships") if isinstance(graph.get("relationships"), list) else None
+        if rels is not None and idx is not None:
+            try:
+                ix = int(idx)
+            except (TypeError, ValueError):
+                ix = -1
+            if 0 <= ix < len(rels):
+                r = rels[ix]
+                if isinstance(r, dict):
+                    sq = _truncate_hitl_text(str(r.get("source_quote", "")), 500)
+                    sid = str(r.get("source_id", ""))
+                    tid = str(r.get("target_id", ""))
+                    typ = str(r.get("type", ""))
+                    return (
+                        f"**Relationship** `graph.relationships[{ix}]` · "
+                        f"{labels.get(sid, f'`{sid}`')} —(`{typ}`)→ {labels.get(tid, f'`{tid}`')}\n\n"
+                        "```text\n"
+                        f"{sq if sq else '(empty source_quote)'}\n"
+                        "```\n\n"
+                        f"> {detail}"
+                    )
+        body = _truncate_hitl_text(detail, 800)
+        return f"> {body}" if body else "_No additional structured evidence._"
+
+    if check == "audit_skipped":
+        return f"> {detail}" if detail else "_No detail._"
+
+    body = _truncate_hitl_text(detail, 800)
+    return f"> {body}" if body else "_No pipeline detail for this check._"
+
+
 def cleanup_warning_widget_id(warning: dict[str, Any], index: int) -> str:
     """Stable key for Streamlit widgets and session decisions (must stay in sync with app)."""
     wid = f"s{warning.get('scene_number', 0)}_i{index}_{warning.get('check', 'x')}"

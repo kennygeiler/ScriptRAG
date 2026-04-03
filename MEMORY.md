@@ -1,6 +1,6 @@
 # Project memory (compact)
 
-**Last aligned:** April 2026. For full detail use **`strategy.md`**. **GSD:** active milestone **v1.1** (tests, LICENSE, dep polish) — `.planning/ROADMAP.md`.
+**Last aligned:** April 2026. For full detail use **`strategy.md`**. **GSD:** **v1.3** Verify HITL depth in progress (Phase 11 shipped); **v1.1** tests/LICENSE still parallel — `.planning/ROADMAP.md`.
 
 ## What this is
 
@@ -13,7 +13,7 @@ Navigation is a **horizontal radio** (`scriptrag_section`), not `st.tabs`, so in
 | Section | Purpose |
 |---------|---------|
 | **Pipeline** | Upload FDX, run full extraction in-process (parse → lexicon → per-scene LangGraph); live progress; persists **:PipelineRun** to Neo4j after each run |
-| **Verify** | Warning cards (title + what Approve does + JSON path); **Approve & Load** applies approved edits then loads Neo4j. Fixer **corrections** live under **Pipeline** |
+| **Verify** | Warnings **by scene**: Approve **preview**, **evidence** expander (rows/quotes/labels), no-auto-edit banner for informational checks; **Approve & Load** applies approved edits then Neo4j. **Corrections** under **Pipeline** |
 | **Reconcile** | Optional post-load hygiene: ghost characters + fuzzy **Character** / **Location** name pairs (`reconcile.py`); optional merge with checkbox + pair picker (APOC or manual rewire) |
 | **Data out** | Schema card, live Neo4j label/rel counts, fixed recipe Cypher (`data_out.py`), CSV downloads (narrative edges, characters, events) |
 | **Pipeline Efficiency Tracking** | Table of **:PipelineRun** rows: telemetry tokens/cost, corrections/warnings counts, agent opt. version |
