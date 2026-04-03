@@ -23,8 +23,15 @@ coverage is subjective. "does act two drag?" "is my protagonist reactive?" "did 
 
 full detail lives in [`strategy.md`](strategy.md). quick context: [`MEMORY.md`](MEMORY.md). agents: [`AGENTS.md`](AGENTS.md).
 
+## why graphrag?
+
+**GraphRAG** (as an idea) means: put **structure first**—entities and relationships in a **graph**—then **retrieve and reason** through that graph (paths, neighborhoods, typed queries), with answers **grounded in evidence** on nodes and edges—not only “similar chunks” from embeddings.
+
+**ScriptRAG** is **GraphRAG for screenplays**: the script becomes a **typed, evidence-backed knowledge graph** in Neo4j (`source_quote` on narrative edges). Dashboards, **Data out** (Cypher + CSV), and **Investigate** (NL→Cypher) all **read through the graph** instead of unstructured text alone. Extraction is **vertical**: a fixed schema, self-healing pipeline, and **Verify** (HITL)—closer to **curated knowledge extraction** than to generic chunk-and-cluster graph builders.
+
 ## table of contents
 
+- [why graphrag?](#why-graphrag)
 - [how it works](#how-it-works)
 - [the pipeline](#the-pipeline)
 - [the editor agent](#the-editor-agent-self-healing-extraction)
