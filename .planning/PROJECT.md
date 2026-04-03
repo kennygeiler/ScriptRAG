@@ -45,10 +45,11 @@ End-to-end, **evidence-backed** structural analysis of a screenplay in a queryab
 - ✓ **HITL + observability copy (FLOW-01)** — Cleanup Review HITL banner; Efficiency observability caption (v1.2 Phase 9, 2026-04-03).
 - ✓ **Demo layout flag (DEMO-01)** — `SCRIPTRAG_DEMO_LAYOUT` tab order + copy (v1.2 Phase 10, 2026-04-03).
 - ✓ **Verify HITL evidence (HITL-01)** — Approve preview, evidence expander, scene grouping, no-auto-edit banners (`cleanup_review.py` + `app.py` Verify; v1.3 Phase 11, 2026-04-03).
+- ✓ **Verify HITL workflow scale (HITL-02)** — Filter/sort controls; bulk Approve for visible `duplicate_relationship` (extract + per-scene) with confirmation (`app.py` Verify; v1.3 Phase 12, 2026-04-03).
 
 ### Active
 
-- **v1.3 Phases 12–13** — HITL workflow scale + audit trail (see ROADMAP).
+- **v1.3 Phase 13** — HITL audit trail (see ROADMAP).
 - **v1.1** — QA/LICENSE/Levenshtein (Phases 5–7).
 - [ ] **QA-01 / QA-02** — Unit tests for structural load and reconcile scan (mocked driver); see `.planning/REQUIREMENTS.md` v1.1.
 - [ ] **DOC-01** — LICENSE + README license alignment.
@@ -103,4 +104,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-03 — v1.3 roadmap + Phase 11 HITL-01 (Verify evidence cards).*
+*Last updated: 2026-04-03 — v1.3 Phase 12 HITL-02 (Verify filter, sort, bulk duplicates).*

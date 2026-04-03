@@ -712,22 +712,90 @@ if _active == "Verify":
         warnings_list = list(pr.get("warnings", []))
         entries = pr.get("entries", [])
         if warnings_list:
-            st.subheader(f"Warnings to verify ({n_warnings})")
-            st.caption(
-                "Cards are **grouped by scene**. Each card has an **Approve preview**, pipeline text, "
-                "and optional **evidence** from the extracted graph. Use **Decline** when the graph is correct as-is."
+            _checks = sorted(
+                {str(w.get("check", "unknown")) for w in warnings_list if isinstance(w, dict)}
             )
-            by_scene: dict[int, list[tuple[int, dict[str, Any]]]] = defaultdict(list)
+            fcol1, fcol2, fcol3 = st.columns(3)
+            with fcol1:
+                _filter_checks = st.multiselect(
+                    "Filter by check type",
+                    options=_checks,
+                    default=_checks,
+                    help="Empty selection shows all types.",
+                    key="verify_hitl_filter_checks",
+                )
+            with fcol2:
+                _scene_order_mode = st.selectbox(
+                    "Order scenes",
+                    options=[
+                        "Scene number (ascending)",
+                        "Scene number (descending)",
+                        "Fewest warnings first",
+                        "Most warnings first",
+                    ],
+                    key="verify_hitl_scene_order",
+                )
+            with fcol3:
+                _within_scene_sort = st.selectbox(
+                    "Sort within each scene",
+                    options=[
+                        "Pipeline order",
+                        "Check type (A–Z)",
+                        "Severity (errors first)",
+                    ],
+                    key="verify_hitl_within_sort",
+                )
+
+            _sel = set(_filter_checks) if _filter_checks else set(_checks)
+            _visible: list[tuple[int, dict[str, Any]]] = []
             for wi, w in enumerate(warnings_list):
                 if not isinstance(w, dict):
                     continue
+                if str(w.get("check", "unknown")) not in _sel:
+                    continue
+                _visible.append((wi, w))
+
+            _n_vis = len(_visible)
+            st.subheader(f"Warnings to verify ({_n_vis} of {n_warnings})")
+            st.caption(
+                "Cards are **grouped by scene**. Each card has an **Approve preview**, pipeline text, "
+                "and optional **evidence** from the extracted graph. Use **Decline** when the graph is correct as-is. "
+                "**Bulk** actions only affect **`duplicate_relationship`** warnings that pass the filter above."
+            )
+
+            by_scene: dict[int, list[tuple[int, dict[str, Any]]]] = defaultdict(list)
+            for wi, w in _visible:
                 try:
                     sn_key = int(w.get("scene_number"))
                 except (TypeError, ValueError):
                     sn_key = -1
                 by_scene[sn_key].append((wi, w))
 
-            scene_order = sorted(k for k in by_scene if k >= 0)
+            def _sev_rank(wd: dict[str, Any]) -> int:
+                s = str(wd.get("severity", "")).lower()
+                if s == "error":
+                    return 0
+                if s == "warning":
+                    return 1
+                return 2
+
+            for _sk in list(by_scene.keys()):
+                pairs = by_scene[_sk]
+                if _within_scene_sort == "Check type (A–Z)":
+                    pairs = sorted(pairs, key=lambda x: (str(x[1].get("check", "")), x[0]))
+                elif _within_scene_sort == "Severity (errors first)":
+                    pairs = sorted(pairs, key=lambda x: (_sev_rank(x[1]), x[0]))
+                by_scene[_sk] = pairs
+
+            _scene_keys = [k for k in by_scene if k >= 0]
+            if _scene_order_mode == "Scene number (ascending)":
+                scene_order = sorted(_scene_keys)
+            elif _scene_order_mode == "Scene number (descending)":
+                scene_order = sorted(_scene_keys, reverse=True)
+            elif _scene_order_mode == "Fewest warnings first":
+                scene_order = sorted(_scene_keys, key=lambda k: len(by_scene[k]))
+            else:
+                scene_order = sorted(_scene_keys, key=lambda k: -len(by_scene[k]))
             if -1 in by_scene:
                 scene_order.append(-1)
 
@@ -746,8 +814,62 @@ if _active == "Verify":
                     return f"Scene {sn_i} — {h}" if h else f"Scene {sn_i}"
                 return f"Scene {sn_i}"
 
+            _all_dup = [
+                (wi, w)
+                for wi, w in _visible
+                if str(w.get("check", "")) == "duplicate_relationship"
+            ]
+            if len(_all_dup) >= 2:
+                with st.expander(
+                    f"Bulk approve all **`duplicate_relationship`** in view ({len(_all_dup)} warning(s), "
+                    f"{len({int(w.get('scene_number') or -1) for _, w in _all_dup})} scene(s))",
+                    expanded=False,
+                ):
+                    st.caption(
+                        "Sets **Approve** on every visible duplicate-relationship card. "
+                        "Re-runs merge logic once per warning at load — safe if the same tuple appears twice in the list."
+                    )
+                    _bd_all = st.checkbox(
+                        "I confirm: approve all duplicate-relationship warnings currently shown.",
+                        key="verify_bulk_dup_all_confirm",
+                    )
+                    if st.button(
+                        "Approve all visible duplicate warnings",
+                        type="secondary",
+                        disabled=not _bd_all,
+                        key="verify_bulk_dup_all_go",
+                    ):
+                        for wi, w in _all_dup:
+                            wd[cleanup_warning_widget_id(w, wi)] = "approved"
+                        st.rerun()
+
             for sn_key in scene_order:
                 st.markdown(f"##### {_scene_heading(sn_key)}")
+                _dup_here = [
+                    (wi, w)
+                    for wi, w in by_scene[sn_key]
+                    if str(w.get("check", "")) == "duplicate_relationship"
+                ]
+                if len(_dup_here) >= 2:
+                    _sid = f"s{sn_key}" if sn_key >= 0 else "s_unknown"
+                    with st.expander(
+                        f"Bulk approve duplicates in this scene ({len(_dup_here)} warning(s))",
+                        expanded=False,
+                    ):
+                        st.caption("Sets **Approve** on each `duplicate_relationship` card in this scene (filtered view).")
+                        _bd_sc = st.checkbox(
+                            f"Confirm bulk approve for {_scene_heading(sn_key)}",
+                            key=f"verify_bulk_dup_scene_{_sid}",
+                        )
+                        if st.button(
+                            "Approve duplicate warnings in this scene",
+                            type="secondary",
+                            disabled=not _bd_sc,
+                            key=f"verify_bulk_dup_scene_go_{_sid}",
+                        ):
+                            for wi, w in _dup_here:
+                                wd[cleanup_warning_widget_id(w, wi)] = "approved"
+                            st.rerun()
                 for wi, w in by_scene[sn_key]:
                     wid = cleanup_warning_widget_id(w, wi)
                     loc = warning_json_location(w, entries)

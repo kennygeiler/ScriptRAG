@@ -1,16 +1,16 @@
 # Phase 12 — Verify HITL workflow scale (HITL-02)
 
-**Status:** Not started — placeholder for planning.
+**Status:** Complete (2026-04-03) — see `12-01-PLAN.md` / `12-01-SUMMARY.md`.
 
-## Intent
+## Shipped
 
-- Filter and/or sort warnings (by check type, scene, severity).
-- Optional **bulk Approve** for `duplicate_relationship` within a scene (or whole extract) with an explicit confirmation step.
+- Filter by check type; order scenes (asc/desc, fewest/most warnings); sort cards within scene.
+- Bulk Approve for visible `duplicate_relationship` warnings (whole extract + per-scene), each with confirmation checkbox.
 
 ## Dependencies
 
-- Phase 11 (evidence cards) complete.
+- Phase 11 (evidence cards).
 
-## Risks
+## Risks (mitigated)
 
-- Bulk approve must not double-apply edits when multiple warnings reference the same tuple; confirm interaction with `apply_approved_warning_edits` ordering.
+- Repeated merge for the same tuple at load: second `apply` pass is a no-op when the graph already has one row.

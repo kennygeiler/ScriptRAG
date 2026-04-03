@@ -53,7 +53,7 @@
 ### Phases
 
 - [x] **Phase 11: HITL evidence cards** — **HITL-01**: `cleanup_review.py` helpers (`graph_entity_labels`, `warning_hitl_evidence_markdown`, `warning_hitl_approve_preview`); Verify tab: scene-grouped cards, evidence expander, approve preview line, banners for `completeness` / `audit_skipped`. Plan `11-01-PLAN.md` — summary `11-01-SUMMARY.md`.
-- [ ] **Phase 12: HITL workflow scale** — **HITL-02**: filter/sort warnings by check type or scene; optional per-scene bulk **Approve** for `duplicate_relationship` only (with confirmation).
+- [x] **Phase 12: HITL workflow scale** — **HITL-02**: filter/sort warnings by check type or scene; bulk **Approve** for visible `duplicate_relationship` (whole extract + per-scene) with confirmation. Plan `12-01-PLAN.md` — summary `12-01-SUMMARY.md`.
 - [ ] **Phase 13: HITL audit trail** — **HITL-03**: export CSV/JSON of decisions on **Approve & Load**; optional short per-warning note field.
 
 ### Progress (v1.3)
@@ -61,7 +61,7 @@
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 11. HITL evidence cards | 1/1 | Complete | 2026-04-03 |
-| 12. HITL workflow scale | 0/? | Not started | — |
+| 12. HITL workflow scale | 1/1 | Complete | 2026-04-03 |
 | 13. HITL audit trail | 0/? | Not started | — |
 
 ---
