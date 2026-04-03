@@ -29,7 +29,7 @@ from cleanup_review import (
     warning_json_location,
     warning_verify_guidance,
 )
-from ingest import build_system_prompt, extract_scenes
+from ingest import _scene_number_key, build_system_prompt, extract_scenes
 from lexicon import build_master_lexicon
 from metrics import get_driver
 from neo4j_loader import load_entries, wipe_screenplay_graph_keep_pipeline_runs
@@ -58,6 +58,8 @@ _PROJECT_ROOT = Path(__file__).resolve().parent
 _TARGET_FDX = _PROJECT_ROOT / "target_script.fdx"
 # Bump when you ship pipeline/agent optimizations (tracked in efficiency tab).
 AGENT_OPTIMIZATION_VERSION = 0
+# Pipeline "Smoke test" mode: first N scenes in screenplay order (reproducible quick run).
+PIPELINE_SMOKE_FIRST_SCENES = 5
 
 _PIPELINE_JSON_NAMES = (
     "raw_scenes.json",
@@ -201,6 +203,28 @@ def _render_pipeline_corrections(corrections: list[dict[str, Any]]) -> None:
                 else:
                     st.markdown(f"**{node}** — {detail}")
                 st.divider()
+
+
+# ---------------------------------------------------------------------------
+# FDX scene stats (Pipeline — count + number span for range UI)
+# ---------------------------------------------------------------------------
+
+
+@st.cache_data(show_spinner=False)
+def _cached_fdx_scene_stats(path_str: str, mtime: float) -> tuple[int, int, int]:
+    """Return (scene_count, min_fdx_scene_number, max_fdx_scene_number). ``mtime`` busts cache on new upload."""
+    del mtime
+    p = Path(path_str)
+    if not p.is_file():
+        return (0, 1, 1)
+    try:
+        scenes = parse_fdx_to_raw_scenes(p)
+    except Exception:
+        return (0, 1, 1)
+    if not scenes:
+        return (0, 1, 1)
+    keys = [_scene_number_key(s, i + 1) for i, s in enumerate(scenes)]
+    return (len(scenes), min(keys), max(keys))
 
 
 # ---------------------------------------------------------------------------
@@ -481,14 +505,64 @@ The hallucinated-quote check substring-matches each `source_quote` against the s
 **Telemetry $:** **Pipeline** / **Efficiency** show **estimated** USD from token counts × `etl_core/telemetry.py` rate table — not your invoice. Cost varies with script length and how often scenes need repair.
 """)
 
-        _scene_limit = st.number_input(
-            "Scene limit",
-            min_value=1,
-            max_value=999,
-            value=86,
-            help="How many scenes to process. Set low (e.g. 3–5) for a quick pipeline smoke test.",
-            key="pipeline_scene_limit",
+        _fdx_n = 0
+        _fdx_min = 1
+        _fdx_max = 1
+        if _TARGET_FDX.is_file():
+            try:
+                _fdx_mtime = _TARGET_FDX.stat().st_mtime
+            except OSError:
+                _fdx_mtime = 0.0
+            _fdx_n, _fdx_min, _fdx_max = _cached_fdx_scene_stats(
+                str(_TARGET_FDX.resolve()),
+                _fdx_mtime,
+            )
+            if _fdx_n > 0:
+                st.info(
+                    f"This FDX has **{_fdx_n}** scene heading(s). "
+                    f"**Scene range** uses FDX scene numbers **{_fdx_min}–{_fdx_max}** (script order)."
+                )
+            else:
+                st.warning(
+                    "Could not read scenes from the current FDX (empty or parse error). "
+                    "**Run Pipeline** will still attempt a full parse."
+                )
+        else:
+            st.caption("Upload a **.fdx** file to see how many scenes it contains.")
+
+        _MODE_FULL = "Full script (100% of scenes)"
+        _MODE_SMOKE = f"Smoke test (first {PIPELINE_SMOKE_FIRST_SCENES} scenes)"
+        _MODE_RANGE = "Scene range (FDX scene numbers)"
+        _LEGACY_MODE_SMOKE = "Smoke test (~5% sample)"
+        _scene_mode = st.radio(
+            "How much to process",
+            options=[_MODE_FULL, _MODE_SMOKE, _MODE_RANGE],
+            key="pipeline_scene_mode",
+            help=f"**Smoke test** runs only the first **{PIPELINE_SMOKE_FIRST_SCENES}** scene headings in screenplay order "
+            f"(or all scenes if the file has fewer). **Scene range** filters by FDX scene number (From–To, inclusive).",
         )
+        if _scene_mode == _MODE_RANGE:
+            rc1, rc2 = st.columns(2)
+            with rc1:
+                st.number_input(
+                    "From scene number",
+                    min_value=int(_fdx_min),
+                    max_value=int(_fdx_max),
+                    value=int(_fdx_min),
+                    step=1,
+                    key="pipeline_scene_from",
+                    help="Inclusive lower bound (FDX scene number).",
+                )
+            with rc2:
+                st.number_input(
+                    "To scene number",
+                    min_value=int(_fdx_min),
+                    max_value=int(_fdx_max),
+                    value=int(_fdx_max),
+                    step=1,
+                    key="pipeline_scene_to",
+                    help="Inclusive upper bound (FDX scene number).",
+                )
 
         if st.button(
             "Run Pipeline",
@@ -539,108 +613,142 @@ The hallucinated-quote check substring-matches each `source_quote` against the s
 
                 if raw_scenes:
                     # Stage 3: Extract scenes (the big loop)
-                    if _scene_limit and _scene_limit < len(raw_scenes):
-                        raw_scenes = raw_scenes[:int(_scene_limit)]
-                        scene_log.write(f"Scene limit: processing first **{len(raw_scenes)}** scenes.")
-                    total = len(raw_scenes)
-                    pipe_status.update(
-                        label=f"Stage 3 — Extracting 0/{total} scenes (each may take ~1–2 min)…",
-                        state="running",
-                    )
-                    all_entries: list[dict[str, Any]] = []
-                    all_audit: list[dict[str, Any]] = []
-                    all_warnings: list[dict[str, Any]] = []
-                    corrections: list[dict[str, Any]] = []
-                    cum_tokens = 0
-                    cum_cost = 0.0
-                    failed_count = 0
-                    done_count = 0
-
-                    for result in extract_scenes(
-                        raw_scenes, system_prompt,
-                        lexicon_ids=lexicon_ids,
-                        enable_audit=True,
-                    ):
-                        done_count += 1
-                        frac = 0.10 + 0.85 * (result.index / total)
-                        status_icon = {
-                            "skip": "⏭️", "empty": "⬜", "ok": "✅",
-                            "fixed": "🔧", "failed": "❌",
-                        }.get(result.status, "?")
-                        progress.progress(
-                            frac,
-                            text=f"Scene {result.index}/{total} — {result.status}",
+                    _n_file = len(raw_scenes)
+                    _m = str(st.session_state.get("pipeline_scene_mode", _MODE_FULL))
+                    if _m == _MODE_SMOKE or _m == _LEGACY_MODE_SMOKE:
+                        _k = min(PIPELINE_SMOKE_FIRST_SCENES, _n_file)
+                        raw_scenes = raw_scenes[:_k]
+                        scene_log.write(
+                            f"**Smoke test:** first **{len(raw_scenes)}** scene(s) in screenplay order "
+                            f"(of **{_n_file}** in file; cap **{PIPELINE_SMOKE_FIRST_SCENES}**)."
                         )
+                    elif _m == _MODE_RANGE:
+                        _lo = int(st.session_state.get("pipeline_scene_from", _fdx_min))
+                        _hi = int(st.session_state.get("pipeline_scene_to", _fdx_max))
+                        if _lo > _hi:
+                            _lo, _hi = _hi, _lo
+                        _filtered = [
+                            s
+                            for i, s in enumerate(raw_scenes)
+                            if _lo <= _scene_number_key(s, i + 1) <= _hi
+                        ]
+                        if not _filtered:
+                            pipe_status.update(label="No scenes in range", state="error")
+                            st.error(
+                                f"No scenes with FDX numbers between **{_lo}** and **{_hi}** "
+                                f"(file has **{_n_file}** scene heading(s))."
+                            )
+                            raw_scenes = []
+                        else:
+                            raw_scenes = _filtered
+                            scene_log.write(
+                                f"**Scene range** **{_lo}–{_hi}**: **{len(raw_scenes)}** scene(s) "
+                                f"(of **{_n_file}** in file)."
+                            )
+                    else:
+                        scene_log.write(f"**Full script:** **{_n_file}** scene(s).")
+                    if not raw_scenes:
+                        pipe_status.update(label="Nothing to extract", state="error")
+                    else:
+                        total = len(raw_scenes)
                         pipe_status.update(
-                            label=f"Stage 3 — Extracted {done_count}/{total} scenes…",
+                            label=f"Stage 3 — Extracting 0/{total} scenes (each may take ~1–2 min)…",
                             state="running",
                         )
-                        msg = (
-                            f"{status_icon} Scene **{result.scene_number}** "
-                            f"({result.heading or 'untitled'}) — {result.status}"
+                        all_entries: list[dict[str, Any]] = []
+                        all_audit: list[dict[str, Any]] = []
+                        all_warnings: list[dict[str, Any]] = []
+                        corrections: list[dict[str, Any]] = []
+                        cum_tokens = 0
+                        cum_cost = 0.0
+                        failed_count = 0
+                        done_count = 0
+
+                        for result in extract_scenes(
+                            raw_scenes, system_prompt,
+                            lexicon_ids=lexicon_ids,
+                            enable_audit=True,
+                        ):
+                            done_count += 1
+                            frac = 0.10 + 0.85 * (result.index / total)
+                            status_icon = {
+                                "skip": "⏭️", "empty": "⬜", "ok": "✅",
+                                "fixed": "🔧", "failed": "❌",
+                            }.get(result.status, "?")
+                            progress.progress(
+                                frac,
+                                text=f"Scene {result.index}/{total} — {result.status}",
+                            )
+                            pipe_status.update(
+                                label=f"Stage 3 — Extracted {done_count}/{total} scenes…",
+                                state="running",
+                            )
+                            msg = (
+                                f"{status_icon} Scene **{result.scene_number}** "
+                                f"({result.heading or 'untitled'}) — {result.status}"
+                            )
+                            if result.status == "failed" and result.error:
+                                msg += f"\n\n`{result.error}`"
+                            scene_log.write(msg)
+
+                            if result.graph_entry:
+                                all_entries.append(result.graph_entry)
+                            all_audit.extend(result.audit_entries)
+                            cum_tokens += result.tokens
+                            cum_cost += result.cost
+
+                            if result.warnings:
+                                for w in result.warnings:
+                                    w.setdefault("scene_number", result.scene_number)
+                                all_warnings.extend(result.warnings)
+
+                            if result.status == "failed":
+                                failed_count += 1
+                            if result.status == "fixed":
+                                corrections.append({
+                                    "scene_number": result.scene_number,
+                                    "heading": result.heading,
+                                    "audit_entries": result.audit_entries,
+                                })
+
+                        progress.progress(1.0, text="Done")
+                        pipe_status.update(label="Pipeline complete", state="complete")
+
+                        st.session_state["pipeline_results"] = {
+                            "entries": all_entries,
+                            "audit_trail": all_audit,
+                            "warnings": all_warnings,
+                            "corrections": corrections,
+                            "total_scenes": total,
+                            "extracted": len(all_entries),
+                            "failed": failed_count,
+                            "tokens": int(cum_tokens or 0),
+                            "cost": float(cum_cost or 0.0),
+                        }
+                        st.session_state.pop("verify_hitl_neo4j_load_at", None)
+                        st.session_state.pop("verify_hitl_load_audit_payload", None)
+                        # Efficiency "filename" is the uploader's original .fdx name only — not on-disk target_script.fdx.
+                        if _up is not None:
+                            st.session_state["pipeline_source_fdx_name"] = _up.name
+                        _fdx_name = str(
+                            st.session_state.get("pipeline_source_fdx_name") or ""
+                        ).strip()
+                        _saved = _persist_pipeline_run(
+                            scenes_extracted=len(all_entries),
+                            total_scenes=total,
+                            corrections_count=len(corrections),
+                            warnings_count=len(all_warnings),
+                            telemetry_tokens=int(cum_tokens or 0),
+                            telemetry_cost_usd=float(cum_cost or 0.0),
+                            failed_scenes=failed_count,
+                            llm_auditors_enabled=True,
+                            fdx_filename=_fdx_name,
                         )
-                        if result.status == "failed" and result.error:
-                            msg += f"\n\n`{result.error}`"
-                        scene_log.write(msg)
-
-                        if result.graph_entry:
-                            all_entries.append(result.graph_entry)
-                        all_audit.extend(result.audit_entries)
-                        cum_tokens += result.tokens
-                        cum_cost += result.cost
-
-                        if result.warnings:
-                            for w in result.warnings:
-                                w.setdefault("scene_number", result.scene_number)
-                            all_warnings.extend(result.warnings)
-
-                        if result.status == "failed":
-                            failed_count += 1
-                        if result.status == "fixed":
-                            corrections.append({
-                                "scene_number": result.scene_number,
-                                "heading": result.heading,
-                                "audit_entries": result.audit_entries,
-                            })
-
-                    progress.progress(1.0, text="Done")
-                    pipe_status.update(label="Pipeline complete", state="complete")
-
-                    st.session_state["pipeline_results"] = {
-                        "entries": all_entries,
-                        "audit_trail": all_audit,
-                        "warnings": all_warnings,
-                        "corrections": corrections,
-                        "total_scenes": total,
-                        "extracted": len(all_entries),
-                        "failed": failed_count,
-                        "tokens": int(cum_tokens or 0),
-                        "cost": float(cum_cost or 0.0),
-                    }
-                    st.session_state.pop("verify_hitl_neo4j_load_at", None)
-                    st.session_state.pop("verify_hitl_load_audit_payload", None)
-                    # Efficiency "filename" is the uploader's original .fdx name only — not on-disk target_script.fdx.
-                    if _up is not None:
-                        st.session_state["pipeline_source_fdx_name"] = _up.name
-                    _fdx_name = str(
-                        st.session_state.get("pipeline_source_fdx_name") or ""
-                    ).strip()
-                    _saved = _persist_pipeline_run(
-                        scenes_extracted=len(all_entries),
-                        total_scenes=total,
-                        corrections_count=len(corrections),
-                        warnings_count=len(all_warnings),
-                        telemetry_tokens=int(cum_tokens or 0),
-                        telemetry_cost_usd=float(cum_cost or 0.0),
-                        failed_scenes=failed_count,
-                        llm_auditors_enabled=True,
-                        fdx_filename=_fdx_name,
-                    )
-                    if not _saved:
-                        st.warning(
-                            "Pipeline finished but **efficiency metrics were not saved** to Neo4j "
-                            "(check connection, credentials, and that the DB allows new labels)."
-                        )
+                        if not _saved:
+                            st.warning(
+                                "Pipeline finished but **efficiency metrics were not saved** to Neo4j "
+                                "(check connection, credentials, and that the DB allows new labels)."
+                            )
 
             pr = st.session_state.get("pipeline_results")
             if pr:
