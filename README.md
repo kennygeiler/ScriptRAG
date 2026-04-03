@@ -22,7 +22,8 @@
 | | |
 |--|--|
 | **Live demo** | [scriptrag.onrender.com](https://scriptrag.onrender.com/) |
-| **Repo** | [github.com/kennygeiler/GraphRAG](https://github.com/kennygeiler/ScriptRAG) |
+| **Repo** | [github.com/kennygeiler/GraphRAG](https://github.com/kennygeiler/GraphRAG) |
+| **Sample FDX files** | [`samples/`](samples/) (bundled `.fdx` + PDF companions; see [`samples/README.md`](samples/README.md)) |
 | **Deep dive** | [`strategy.md`](strategy.md) (architecture, metrics, roadmap) · [`AGENTS.md`](AGENTS.md) (conventions) · [`Telemetry.md`](Telemetry.md) (pipeline cost / Token Agent versions) |
 
 [![100% Agentic Codebase](https://img.shields.io/badge/100%25-Agentic%20codebase-5a67d8.svg)](https://github.com/kennygeiler/GraphRAG)
