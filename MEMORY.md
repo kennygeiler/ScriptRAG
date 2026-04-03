@@ -4,7 +4,7 @@
 
 ## What this is
 
-**ScriptRAG**: `.fdx` → JSON → **Neo4j** (`Character`, `Location`, `Prop`, `Event` + `IN_SCENE` + narrative rels with `source_quote`). **Streamlit** app = upload screenplay → self-healing extraction (**Pipeline**: full in-process run via **`extract_scenes`**; corrections include **fixer** + **auditor_auto_apply**) → **Audit & Verify** (HITL warnings + load) → optional **Reconcile** → **Data out** (recipe Cypher + CSV) and **Pipeline Efficiency Tracking**. **Token Agent** **`v0`–`v3`**: **`v2`** = Phase 1; **`v3`** = Phase 2 (Haiku-first audit); **Ludwig.fdx** 5-scene **v1 vs v2** A/B in **`Telemetry.md`** (~**−21%** est. $, same script/range). **`strategy.md`**: Phase 3 (conditional audit) next. Semantic audit may **auto-apply** gated patches; decisions log to **`audit_decisions.jsonl`** (gitignored). **Bundled scripts:** `samples/` (Cinema Four full + Ludwig micro-sample, each `.fdx` + companion `.pdf`); root **README** has a **demo walkthrough**.
+**ScriptRAG**: `.fdx` → JSON → **Neo4j** (`Character`, `Location`, `Prop`, `Event` + `IN_SCENE` + narrative rels with `source_quote`). **Streamlit** app = upload screenplay → self-healing extraction (**Pipeline**: full in-process run via **`extract_scenes`**; corrections include **fixer** + **auditor_auto_apply**) → **Audit & Verify** (HITL warnings + load) → optional **Reconcile** → **Data out** (recipe Cypher + CSV) and **Pipeline Efficiency Tracking**. **Token Agent** **`v0`–`v3`** in DB; UI summary also lists **`v4` / `v5`** (Phases 3–4, not implemented). **`v3`** = Phase 2 (Haiku-first audit); **Ludwig.fdx** 5-scene **v2 vs v3** in **`Telemetry.md`** (~**−54%** est. $ on 2026-04-03 run; audit $ dominated by Haiku pricing). **`strategy.md`**: Phase 3 (**`v4`**) next. Semantic audit may **auto-apply** gated patches; decisions log to **`audit_decisions.jsonl`** (gitignored). **Bundled scripts:** `samples/` (Cinema Four full + Ludwig micro-sample, each `.fdx` + companion `.pdf`); root **README** has a **demo walkthrough**.
 
 ## App sections (`app.py`)
 
@@ -16,7 +16,7 @@ Navigation is a **horizontal radio** (`scriptrag_section`), not `st.tabs`, so in
 | **Audit & Verify** | **Filter/sort/bulk** duplicates; **preview** + **evidence**; optional **notes**; **Decision log** CSV/JSON + **last-load** snapshot; **Approve & Load** → Neo4j (HITL warnings only; auto-applied audit edits already in graph JSON) |
 | **Reconcile** | Optional post-load hygiene: ghost characters + fuzzy **Character** / **Location** name pairs (`reconcile.py`); optional merge with checkbox + pair picker (APOC or manual rewire) |
 | **Data out** | Schema card, live Neo4j label/rel counts, fixed recipe Cypher (`data_out.py`), CSV downloads (narrative edges, characters, events) |
-| **Pipeline Efficiency Tracking** | **:PipelineRun** rows: **Token Agent** **v0**–**v3**, totals; **v0** shows **N/A** for E/F/A split columns; expander **Token Agent / Telemetry version summary** |
+| **Pipeline Efficiency Tracking** | **:PipelineRun**: **Token Agent** **v0**–**v3**; expander adds planned **v4** / **v5**; **v0** shows **N/A** for E/F/A split |
 
 **Pipeline** hidden when `DISABLE_PIPELINE=1` (read-only deployments). **`SCRIPTRAG_DEMO_LAYOUT=1`** reorders **Audit & Verify → Data out → Reconcile → …** (default is **Audit & Verify → Reconcile → Data out → …**).
 

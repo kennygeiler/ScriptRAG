@@ -1577,6 +1577,7 @@ if _active == "Pipeline Efficiency Tracking":
         st.markdown(
             "The **Token Agent** column mirrors integer **`telemetry_version`** on the node (`v0` = legacy). "
             f"Current code writes **`v{PIPELINE_TELEMETRY_VERSION}`** on new runs. "
+            "**v4** / **v5** below are roadmap-only until those phases ship. "
             "Authoritative changelog: **`Telemetry.md`** (repo root)."
         )
         st.markdown(TOKEN_AGENT_SUMMARY_MD)

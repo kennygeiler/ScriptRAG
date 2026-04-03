@@ -18,6 +18,7 @@ _DEFAULT_OUTPUT = 15.00
 # Stored on each Neo4j :PipelineRun as ``telemetry_version``. **0** = legacy (missing property).
 # **1** = Phase 0 (per-stage attribution). **2** = Phase 1 (compact prompts/payloads).
 # **3** = Phase 2 (Haiku-first semantic audit, Sonnet fallback; see ``extraction_llm.call_audit_llm_with_usage``).
+# **4** / **5** are reserved for roadmap phases 3–4 (see **TOKEN_AGENT_SUMMARY_MD**); bump this constant only when code ships.
 # Increment when attribution or stored fields change materially; document in **Telemetry.md**.
 PIPELINE_TELEMETRY_VERSION = 3
 
@@ -27,6 +28,8 @@ TOKEN_AGENT_SUMMARY_MD = """
 - **v1** — **Phase 0:** per-stage **extract / fix / audit** token and estimated USD on every run.
 - **v2** — **Phase 1:** compact lexicon system prompt; compact JSON for audit + fixer user messages; auditor output capped (`max_tokens`).
 - **v3** — **Phase 2:** **Haiku-first** for the three bundled **semantic auditors** (Sonnet on failure); extract and fixer stay **Sonnet → Haiku** fallback.
+- **v4** — **Phase 3 (roadmap):** conditional / tiered audit (skip or shorten when safe). **Not implemented yet** — no `telemetry_version` **4** rows until this ships.
+- **v5** — **Phase 4 (roadmap):** cache, dedup, optional batch/offline ingest. **Coming soon** — not implemented; **`PIPELINE_TELEMETRY_VERSION`** will advance when each phase lands (Phase **5** pricing/export will get its own bump, e.g. **v6**).
 """.strip()
 
 

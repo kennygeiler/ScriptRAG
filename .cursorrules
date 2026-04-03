@@ -1,6 +1,6 @@
 # Project Memory: ScriptRAG
 
-**Authoritative context:** See **`strategy.md`** in the repo root for full project state, roadmap, metric definitions, app map, and strict AI rules. **Efficiency:** Phase map to Token Agent: **v1** = instrumentation; **v2** = Phase 1 prompts; **v3** = Phase 2 Haiku-first audit. Phase 3 (conditional audit) next. Baseline **2026-04-03** in **`Telemetry.md`**. **Update `strategy.md` on every major milestone**; keep **`MEMORY.md`** in sync; this file stays a short mirror for Cursor.
+**Authoritative context:** See **`strategy.md`** in the repo root for full project state, roadmap, metric definitions, app map, and strict AI rules. **Efficiency:** **v1**–**v3** = Phases 0–2 shipped; UI lists reserved **v4** / **v5** (Phases 3–4, not implemented). Ludwig **v3** benchmark **2026-04-03** in **`Telemetry.md`**. Phase 3 next. **Update `strategy.md` on every major milestone**; keep **`MEMORY.md`** in sync; this file stays a short mirror for Cursor.
 
 **Current date:** April 2026 
 **Owner:** Kenny Geiler 
@@ -11,7 +11,7 @@
 - **Input:** `.fdx` (Final Draft) → `raw_scenes.json` → lexicon → `validated_graph.json`.
 - **Graph:** Neo4j — `Character`, `Location`, `Prop`, `Event`; `IN_SCENE` + narrative rels with quotes.
 - **Extraction:** Claude via `instructor` + Pydantic (`schema.py`). Self-healing pipeline: extract → validate → fix (up to 3 retries) via `etl_core` LangGraph engine. Optional **semantic audit** (3 LLM calls) + **`audit_post_process`**: gated **auto-apply** (`auditor_auto_apply`, **`audit_decisions.jsonl`**); remainder → **Audit & Verify** warnings. No **`audit_fixer`** loop.
-- **Streamlit (`app.py`):** **ScriptRAG** (wide layout). Sections (horizontal **radio**, not tabs): **Pipeline** (full `extract_scenes` run; fixer + **auditor_auto_apply** corrections; audit decisions table), **Audit & Verify** (HITL; filter/sort/bulk, evidence, notes, CSV/JSON, load), **Reconcile**, **Data out** (`data_out.py`), **Pipeline Efficiency Tracking** (total + extract/fix/audit telemetry; **Token Agent / Telemetry version summary** for **v0–v3**). Neo4j **Clear screenplay** keeps **:PipelineRun**. **REL-01:** cached loaders for Reconcile / Data out. Charts + NL→Cypher **removed**; **`metrics.py`** / CLI keep structural analytics.
+- **Streamlit (`app.py`):** **ScriptRAG** (wide layout). Sections (horizontal **radio**, not tabs): **Pipeline** (full `extract_scenes` run; fixer + **auditor_auto_apply** corrections; audit decisions table), **Audit & Verify** (HITL; filter/sort/bulk, evidence, notes, CSV/JSON, load), **Reconcile**, **Data out** (`data_out.py`), **Pipeline Efficiency Tracking** (telemetry; **Token Agent** summary **v0–v3** + planned **v4** / **v5**). Neo4j **Clear screenplay** keeps **:PipelineRun**. **REL-01:** cached loaders for Reconcile / Data out. Charts + NL→Cypher **removed**; **`metrics.py`** / CLI keep structural analytics.
 
 ## 2. Metrics (do not conflate)
 
