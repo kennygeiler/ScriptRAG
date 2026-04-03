@@ -20,10 +20,10 @@ def warning_check_title(check: str) -> str:
     titles: dict[str, str] = {
         "lexicon_compliance": "Lexicon compliance",
         "duplicate_relationship": "Duplicate relationship",
-        "quote_fidelity": "Quote fidelity (auditor)",
-        "attribution": "Attribution (auditor)",
-        "completeness": "Possible missing edges (auditor)",
-        "audit_skipped": "LLM audit did not run",
+        "quote_fidelity": "Quote fidelity (semantic check)",
+        "attribution": "Attribution (semantic check)",
+        "completeness": "Possible missing edges (semantic check)",
+        "audit_skipped": "Extra validation did not run",
     }
     return titles.get(key, key.replace("_", " ").title())
 
@@ -34,10 +34,10 @@ def warning_verify_guidance(check: str) -> str:
     hints: dict[str, str] = {
         "lexicon_compliance": "Approve removes a Character/Location node that is not in the lexicon (and its edges). Use if the extractor invented or misspelled an id.",
         "duplicate_relationship": "Approve merges duplicate rows for the same (source, target, type) into one edge with combined quotes.",
-        "quote_fidelity": "Approve removes one relationship the auditor flagged as weakly supported by the quote. Decline if you think the edge is still valid.",
+        "quote_fidelity": "Approve removes one relationship flagged as weakly supported by the quote. Decline if you think the edge is still valid.",
         "attribution": "Approve removes one relationship where source/target may be swapped or wrong. Decline if attribution looks correct.",
-        "completeness": "Auditor thinks something is missing from the graph. Approve only records acknowledgment — you must edit the JSON yourself if you want new edges.",
-        "audit_skipped": "Technical failure during audit; no automatic graph change. Approve/decline is informational only.",
+        "completeness": "The check suggests something may be missing from the graph. Approve only records acknowledgment — you must edit the JSON yourself if you want new edges.",
+        "audit_skipped": "Technical failure during an extra validation step; no automatic graph change. Approve/decline is informational only.",
     }
     return hints.get(
         key,
@@ -401,7 +401,7 @@ def warning_json_location(warning: dict[str, Any], entries: list[dict[str, Any]]
         return f"{base} → `graph.relationships` — duplicate tuple in this scene"
 
     if check == "audit_skipped":
-        return f"{base} — _LLM audit step failed; deterministic checks only_"
+        return f"{base} — _Extra validation step failed; deterministic checks only_"
 
     if check in ("quote_fidelity", "completeness", "attribution"):
         if idx is not None and isinstance(graph.get("relationships"), list):

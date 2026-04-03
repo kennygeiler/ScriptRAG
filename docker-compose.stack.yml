@@ -1,7 +1,7 @@
 # One-command stack: Neo4j 5 + Streamlit (no Aura). Use on a laptop or a VPS with Docker.
 #
 #   echo 'NEO4J_PASSWORD=choose-a-strong-password' > .env
-#   echo 'ANTHROPIC_API_KEY=...' >> .env   # optional, for Ask the graph
+#   echo 'ANTHROPIC_API_KEY=sk-ant-...' >> .env   # required for Pipeline / lexicon / ingest
 #   docker compose -f docker-compose.stack.yml up --build -d
 #
 # Then load the graph from the host (Neo4j Bolt on localhost:7687):

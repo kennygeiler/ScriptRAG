@@ -34,6 +34,7 @@ def save_pipeline_run(
     agent_optimization_version: int,
     failed_scenes: int,
     llm_auditors_enabled: bool,
+    fdx_filename: str = "",
 ) -> str:
     """Write one run record. Returns the new run id."""
     run_id = str(uuid.uuid4())
@@ -45,6 +46,7 @@ def save_pipeline_run(
             CREATE (p:PipelineRun {
                 id: $id,
                 ts: $ts,
+                fdx_filename: $fdx_filename,
                 scenes_extracted: toInteger($scenes_extracted),
                 total_scenes: toInteger($total_scenes),
                 corrections_count: toInteger($corrections_count),
@@ -58,6 +60,7 @@ def save_pipeline_run(
             """,
             id=run_id,
             ts=ts,
+            fdx_filename=str(fdx_filename or ""),
             scenes_extracted=scenes_extracted,
             total_scenes=total_scenes,
             corrections_count=corrections_count,

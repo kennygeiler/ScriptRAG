@@ -169,7 +169,7 @@ def _build_auditor(bundle: DomainBundle):
             warnings.append({
                 "check": "audit_skipped",
                 "severity": "warning",
-                "detail": f"LLM audit failed ({type(exc).__name__}); scene accepted with deterministic checks only.",
+                "detail": f"Extra validation failed ({type(exc).__name__}); scene accepted with deterministic checks only.",
             })
             return {"audit_trail": audit, "warnings": warnings, "last_error": None}
 

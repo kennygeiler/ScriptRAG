@@ -79,6 +79,7 @@ def _persist_pipeline_run(
     telemetry_cost_usd: float,
     failed_scenes: int,
     llm_auditors_enabled: bool,
+    fdx_filename: str = "",
 ) -> bool:
     drv = None
     try:
@@ -94,6 +95,7 @@ def _persist_pipeline_run(
             agent_optimization_version=AGENT_OPTIMIZATION_VERSION,
             failed_scenes=failed_scenes,
             llm_auditors_enabled=llm_auditors_enabled,
+            fdx_filename=fdx_filename,
         )
         return True
     except Exception:
@@ -137,10 +139,10 @@ def _delete_pipeline_json_files() -> None:
 
 
 def _render_pipeline_corrections(corrections: list[dict[str, Any]]) -> None:
-    """Show fixer/audit repair trail where extraction happened (Pipeline tab)."""
+    """Show fixer / follow-up repair trail where extraction happened (Pipeline tab)."""
     st.subheader("Self-healing corrections")
     st.caption(
-        "During **Stage 3**, some scenes needed a **rewrite** after rules or auditors reported errors. "
+        "During **Stage 3**, some scenes needed a **rewrite** after validation reported errors. "
         "This is the same graph the pipeline kept — nothing to approve here. Use **Verify** for **warnings** only."
     )
     for corr in corrections:
@@ -157,7 +159,7 @@ def _render_pipeline_corrections(corrections: list[dict[str, Any]]) -> None:
                 detail = entry.get("detail", "")
 
                 if node in ("fixer", "audit_fixer"):
-                    label = "Audit fixer" if node == "audit_fixer" else "Rules / schema fixer"
+                    label = "Follow-up repair" if node == "audit_fixer" else "Rules / schema fixer"
                     reason = str(entry.get("reason") or "")
                     st.markdown(f"**{label}** · attempt {entry.get('attempt', '?')}")
                     st.markdown("**Why it failed validation**")
@@ -178,7 +180,7 @@ def _render_pipeline_corrections(corrections: list[dict[str, Any]]) -> None:
                             st.markdown(asum)
                 elif node == "audit" and entry.get("findings"):
                     st.markdown(
-                        f"**Auditor pass** — {entry.get('error_count', 0)} error(s), "
+                        f"**Semantic check** — {entry.get('error_count', 0)} error(s), "
                         f"{entry.get('warning_count', 0)} warning(s) recorded"
                     )
                     for f in entry["findings"]:
@@ -407,7 +409,7 @@ if _PIPELINE_ENABLED and _active == "Pipeline":
         st.header("Pipeline")
         st.caption(
             "Upload a Final Draft (.fdx) screenplay then run the full extraction pipeline. "
-            "Each scene runs **extract → validate ⇄ fix** and, if **Enable LLM auditors** is on, **audit ⇄ audit fixer**. "
+            "Each scene runs **extract → validate ⇄ fix**, then follow-up checks and repair as needed. "
             "Each finished run writes a **:PipelineRun** row to Neo4j (telemetry tokens and **estimated** USD from `etl_core/telemetry.py`)."
         )
 
@@ -419,6 +421,7 @@ if _PIPELINE_ENABLED and _active == "Pipeline":
         )
         if _up is not None:
             _TARGET_FDX.write_bytes(_up.getvalue())
+            st.session_state["pipeline_source_fdx_name"] = _up.name
             st.success(f"Saved **{_TARGET_FDX.name}** ({len(_up.getvalue()):,} bytes)")
 
         with st.expander("How does this pipeline thing even work?"):
@@ -452,12 +455,10 @@ if _PIPELINE_ENABLED and _active == "Pipeline":
  │        │  └────┬─────┘                                      │
  │        │       └──────▶ back to VALIDATE (up to 3x)        │
  │        ▼                                                    │
- │  ┌───────────────┐  If checkbox ON: 3 Claude calls        │
- │  │ LLM AUDITORS  │  (quote fidelity, completeness,         │
- │  │  (3 LLM)      │   attribution). If OFF, skip this box.   │
+ │  ┌───────────────┐  Extra model passes + repair if        │
+ │  │ FOLLOW-UP     │  needed (quote/structure checks;        │
+ │  │ CHECKS        │  up to 2 repair cycles)                 │
  │  └───────┬───────┘                                         │
- │          │                                                  │
- │     pass │    fail -> AUDIT FIXER -> AUDIT (up to 2x)      │
  │          ▼                                                  │
  │   validated scene graph                                     │
  └─────────────────────────────────────────────────────────────┘
@@ -468,28 +469,17 @@ if _PIPELINE_ENABLED and _active == "Pipeline":
 **What "deterministic" means:** the first five error checks are plain Python — no AI.
 The hallucinated-quote check substring-matches each `source_quote` against the scene text.
 
-**LLM auditors:** optional — uncheck **Enable LLM auditors** for deterministic-only passes (faster).
-
-**Telemetry $:** **Pipeline** / **Efficiency** show **estimated** USD from token counts × `etl_core/telemetry.py` rate table — not your invoice. Ballpark for ~86 scenes: **~$0.85** without auditors vs **~$2.50** with — depends on length and retries.
+**Telemetry $:** **Pipeline** / **Efficiency** show **estimated** USD from token counts × `etl_core/telemetry.py` rate table — not your invoice. Cost varies with script length and how often scenes need repair.
 """)
 
-        col_opt1, col_opt2 = st.columns(2)
-        with col_opt1:
-            _scene_limit = st.number_input(
-                "Scene limit",
-                min_value=1,
-                max_value=999,
-                value=86,
-                help="How many scenes to process. Set low (e.g. 3–5) for a quick pipeline smoke test.",
-                key="pipeline_scene_limit",
-            )
-        with col_opt2:
-            _enable_audit = st.checkbox(
-                "Enable LLM auditors",
-                value=True,
-                help="Adds 3 AI auditor calls per scene (~30 s extra). Uncheck for a faster run with deterministic checks only.",
-                key="pipeline_enable_audit",
-            )
+        _scene_limit = st.number_input(
+            "Scene limit",
+            min_value=1,
+            max_value=999,
+            value=86,
+            help="How many scenes to process. Set low (e.g. 3–5) for a quick pipeline smoke test.",
+            key="pipeline_scene_limit",
+        )
 
         if st.button(
             "Run Pipeline",
@@ -545,7 +535,7 @@ The hallucinated-quote check substring-matches each `source_quote` against the s
                         scene_log.write(f"Scene limit: processing first **{len(raw_scenes)}** scenes.")
                     total = len(raw_scenes)
                     pipe_status.update(
-                        label=f"Stage 3 — Extracting 0/{total} scenes (each takes ~30-60 s with auditors)…",
+                        label=f"Stage 3 — Extracting 0/{total} scenes (each may take ~1–2 min)…",
                         state="running",
                     )
                     all_entries: list[dict[str, Any]] = []
@@ -560,7 +550,7 @@ The hallucinated-quote check substring-matches each `source_quote` against the s
                     for result in extract_scenes(
                         raw_scenes, system_prompt,
                         lexicon_ids=lexicon_ids,
-                        enable_audit=_enable_audit,
+                        enable_audit=True,
                     ):
                         done_count += 1
                         frac = 0.10 + 0.85 * (result.index / total)
@@ -618,6 +608,11 @@ The hallucinated-quote check substring-matches each `source_quote` against the s
                         "tokens": int(cum_tokens or 0),
                         "cost": float(cum_cost or 0.0),
                     }
+                    _fdx_name = str(
+                        (_up.name if _up is not None else None)
+                        or st.session_state.get("pipeline_source_fdx_name")
+                        or _TARGET_FDX.name
+                    )
                     _saved = _persist_pipeline_run(
                         scenes_extracted=len(all_entries),
                         total_scenes=total,
@@ -626,7 +621,8 @@ The hallucinated-quote check substring-matches each `source_quote` against the s
                         telemetry_tokens=int(cum_tokens or 0),
                         telemetry_cost_usd=float(cum_cost or 0.0),
                         failed_scenes=failed_count,
-                        llm_auditors_enabled=bool(_enable_audit),
+                        llm_auditors_enabled=True,
+                        fdx_filename=_fdx_name,
                     )
                     if not _saved:
                         st.warning(
@@ -683,11 +679,11 @@ The hallucinated-quote check substring-matches each `source_quote` against the s
 if _active == "Verify":
     st.header("Verify")
     st.caption(
-        "Review **warnings** from rules and LLM auditors. **Approve** applies the listed edit before Neo4j load "
+        "Review **warnings** from rules and semantic checks. **Approve** applies the listed edit before Neo4j load "
         "(where supported); **Decline** skips it. Self-healing **corrections** are summarized in the **Pipeline** tab."
     )
     st.info(
-        "**Human-in-the-loop gate.** Deterministic checks and optional auditors already ran in **Pipeline**. "
+        "**Human-in-the-loop gate.** The **Pipeline** tab already ran validation and follow-up checks. "
         "Here you judge each **warning** — then **Approve & load to Neo4j** commits the graph. "
         "Next: optional **Reconcile**, then **Data out**."
     )
@@ -1085,15 +1081,16 @@ if _active == "Pipeline Efficiency Tracking":
             tot = int(r.get("total_scenes", 0) or 0)
             tel_tok = int(r.get("telemetry_tokens", 0) or 0)
             tel_cost = float(r.get("telemetry_cost_usd", 0) or 0)
+            _fn = r.get("fdx_filename")
             display.append({
                 "Run (UTC)": str(r.get("ts", ""))[:19].replace("T", " "),
+                "Filename": str(_fn).strip() if _fn else "—",
                 "Scenes extracted": f"{ext} / {tot}" if tot else str(ext),
                 "Corrections": int(r.get("corrections_count", 0) or 0),
                 "Warnings": int(r.get("warnings_count", 0) or 0),
                 "Telemetry tokens": tel_tok,
                 "Telemetry cost ($)": round(tel_cost, 4),
                 "Agent opt. ver.": int(r.get("agent_optimization_version", 0) or 0),
-                "Auditors": "yes" if r.get("llm_auditors_enabled") else "no",
                 "Failed scenes": int(r.get("failed_scenes", 0) or 0),
             })
         df = pd.DataFrame(display)
