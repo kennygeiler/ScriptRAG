@@ -13,7 +13,7 @@
 **Core philosophy — "ruthless structuralism":**  
 We do not infer vibes from prose alone. We map **narrative physics**: who acts on whom, where conflict is explicit, how passive a character is under a defined graph metric, and whether props earn their place. Evidence lives on edges as **verbatim `source_quote`** text from the script.
 
-**Reference production:** The primary developed script is **Cinema Four** (~86 scenes). The **pipeline is script-agnostic** in principle (any `.fdx` → same JSON → Neo4j shape); some **dashboard copy and arc defaults** still name specific roles (e.g. Zev / Alan) and should be generalized over time.
+**Reference production:** **Cinema Four** (~86 scenes) is the script used most in development. The **pipeline and UI are script-agnostic**: any `.fdx` → same JSON → Neo4j shape; **primary lead** and cohort size come from **graph analysis** with optional **`SCRIPTRAG_*`** env overrides (`lead_resolution.py`), not hardcoded character names in `app.py`.
 
 ---
 
@@ -26,7 +26,7 @@ We do not infer vibes from prose alone. We map **narrative physics**: who acts o
 | Extract | `validated_graph.json` (per-scene `SceneGraph`) | `ingest.py` (exports `extract_scenes()` generator; checkpoints each scene; `--fresh` to wipe) |
 | Load | Neo4j nodes & relationships | `neo4j_loader.py` (exports `load_entries()` for in-memory data) |
 | Analyze | Passivity, heat, Chekhov, QA queries | `metrics.py`, `reconcile.py` |
-| Experience | Pipeline + Cleanup Review + efficiency log + Dashboard + Investigate | `app.py`, `agent.py`, `pipeline_runs.py`, `cleanup_review.py` |
+| Experience | Pipeline + Cleanup + Reconcile + efficiency + Dashboard + Investigate | `app.py`, `agent.py`, `pipeline_runs.py`, `cleanup_review.py`, `reconcile.py`, `lead_resolution.py` |
 
 **Graph model (Neo4j):**
 
@@ -55,7 +55,7 @@ Use this as a checklist; flip items when reality changes.
 - [x] **Neo4j loader** (merge events, entities, `IN_SCENE`, narrative edges with quotes).
 - [x] **Metrics layer** (`metrics.py`): passivity (global and windowed), scene heat, load-bearing props, possessed-unused, Act I→III Chekhov-style audit, scene inspector quotes, character `IN_SCENE` counts.
 - [x] **Scene heat refinement:** numerator = **distinct unordered conflict pairs** in-scene (not raw `CONFLICTS_WITH` edge count) to reduce dialogue-bloat skew.
-- [x] **Streamlit dashboard** (`app.py`): **ScriptRAG** — **Pipeline** (upload FDX, in-process extraction; persists **:PipelineRun**), **Cleanup Review** (corrections as plain English + compact before/after; warnings with JSON path + approve/decline; approve & load to Neo4j), **Reconcile** (`reconcile.py` scan + optional confirmed merges; ghosts + fuzzy Character/Location pairs), **Pipeline Efficiency Tracking** (table from Neo4j; telemetry token/cost), **Dashboard** (momentum, payoff matrix, power shift, X/N scenes, protagonist regression), **Investigate** (ask the graph).
+- [x] **Streamlit dashboard** (`app.py`): **ScriptRAG** — **Pipeline** (upload FDX, in-process extraction; persists **:PipelineRun**), **Cleanup Review** (corrections as plain English + compact before/after; warnings with JSON path + approve/decline; approve & load to Neo4j), **Reconcile** (`reconcile.py` scan + optional confirmed merges; ghosts + fuzzy Character/Location pairs), **Pipeline Efficiency Tracking** (table from Neo4j; telemetry token/cost), **Dashboard** (structural load MET-01, momentum, payoff matrix, power shift, X/N scenes, **primary-lead** regression warning), **Investigate** (ask the graph).
 - [x] **Self-healing ETL pipeline:** `etl_core` LangGraph engine (extract → validate → fix loop), `ingest.py` exports `extract_scenes()` generator, Streamlit consumes it with live per-scene progress.
 - [x] **Ask the graph** chat path (`agent.py`).
 - [x] **Utilities:** `debug_export.py` → `graph_qa_dump.json`; `qa_entities.py` → `data_health_report.json`.
@@ -113,11 +113,17 @@ These definitions are what code should implement; if code diverges, fix code or 
 
 ## 6. Future strategy
 
-1. **Hardening:** Empty Neo4j and partial JSON states; clear user messaging and no uncaught KeyErrors in DataFrame paths.
-2. **Generalization:** Dynamic leads / antagonists for charts and takeaways; optional project config (YAML or env) for role IDs.
-3. **Reconciliation at scale:** Expand `reconcile.py` workflows from the dashboard and CLI; keep merges safe (APOC or manual rewire patterns already referenced in UI).
-4. **Producer overlays:** Phase 3 complexity metrics without diluting structural truth.
-5. **Documentation hygiene:** After each milestone, update **`strategy.md`** (this file), then sync **`README.md`**, **`MEMORY.md`**, **`AGENTS.md`**, and **`.cursorrules`** so onboarding stays single-source (`strategy.md`) with short mirrors.
+**Shipped (v1.0 track):** REL-01 empty-state hardening, CONFIG/GEN primary lead, REC-01 reconcile CLI + tab, MET-01 structural load — see **§3 Done** for detail.
+
+**Likely next (v1.1+):**
+
+1. **Automated tests** — pytest (or similar) for `metrics.py` / `reconcile.py` critical paths with mocked Neo4j sessions; optional integration smoke against a disposable DB.
+2. **Repo hygiene** — explicit **LICENSE**, optional **CONTRIBUTING**, CI (lint + tests) if the project goes public.
+3. **Operator UX** — export snapshots (CSV/JSON) from Dashboard; Prop-level reconciliation; richer efficiency / cost rollups.
+4. **Performance** — optional **`python-Levenshtein`** to speed `fuzzywuzzy` in `reconcile.py` (removes runtime warning).
+5. **Exploratory:** Sentiment or subtext on edges **only** with verbatim `source_quote` and secondary placement vs structural metrics (**§3**).
+
+**Standing rule:** After each milestone, update **`strategy.md`** first, then **`README.md`**, **`MEMORY.md`**, **`AGENTS.md`**, **`.cursorrules`**, and **`.planning/*`** as needed.
 
 ---
 
@@ -168,6 +174,8 @@ Follow these in every change unless the user explicitly overrides.
 | `debug_export.py` | Sample Neo4j → `graph_qa_dump.json` |
 | `qa_entities.py` | Consistency audit → `data_health_report.json` |
 | `pipeline_state.py` | `pipeline_state.json` + `filesystem_snapshot()` |
+| `reconcile.py` | Fuzzy duplicate + ghost scan; Character/Location merge (APOC or manual rewire) |
+| `lead_resolution.py` | Primary lead + top-K from metrics; `SCRIPTRAG_*` env overrides |
 
 ---
 

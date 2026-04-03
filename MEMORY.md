@@ -1,6 +1,6 @@
 # Project memory (compact)
 
-**Last aligned:** April 2026. For full detail use **`strategy.md`**.
+**Last aligned:** April 2026. For full detail use **`strategy.md`**. **GSD:** active milestone **v1.1** (tests, LICENSE, dep polish) — `.planning/ROADMAP.md`.
 
 ## What this is
 

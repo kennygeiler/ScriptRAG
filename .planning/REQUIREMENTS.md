@@ -1,43 +1,49 @@
-# Requirements — ScriptRAG (v1 GSD track)
+# Requirements — ScriptRAG (v1.1 GSD track)
 
-Requirements for the **current planning milestone**: hardening, generalization, reconciliation expansion, and first Phase 3 signals. Shipped capabilities are listed as validated in `.planning/PROJECT.md`.
+Requirements for the **current planning milestone**: automated tests for critical analytics/reconcile paths, explicit open-source licensing, and small dependency/operator polish. v1.0 REQ-IDs remain satisfied; see `.planning/MILESTONES.md` and the traceability table at the end for v1.0 history.
 
-## v1 Requirements
+## v1.1 Requirements
 
-### Configuration & generalization
+### Quality & tests
 
-- [x] **CONFIG-01**: Primary lead(s) for regression warnings and role-dependent analytics are **derived from graph/metrics analysis** (structural signals in `metrics.py` / Neo4j); operators may **override or pin** via environment variables or a small project config file—no hardcoded `PROTAGONIST_ID`-style constants as the only source of truth in `app.py`.
-- [x] **GEN-01**: User-visible copy across **all Streamlit tabs** (and related modules such as `cleanup_review.py`, `agent.py`, `pipeline_runs.py` where operator-facing) avoids fixed production-specific character IDs; labels use analysis- or graph-derived identities (plus overrides) so a new script does not require code edits for basic correctness.
+- [ ] **QA-01**: **Unit tests** (pytest) for `metrics.py` **structural load** path: mocked Neo4j session / result records so `get_structural_load_snapshot` (or equivalent public surface) is exercised without a live database; asserts stable shape for empty and non-empty graph fixtures.
+- [ ] **QA-02**: **Unit tests** for `reconcile.py` **scan** logic (and any small pure helpers used for merge decisions) with **mocked** driver/session — no accidental writes; cover at least empty graph and a minimal duplicate-name fixture if feasible without integration DB.
 
-### Reliability & UX
+### Open source & docs
 
-- [x] **REL-01**: When Neo4j is empty, partially loaded, or query results lack expected columns, the Streamlit dashboard shows explicit empty states or safe fallbacks—no uncaught exceptions in metric/DataFrame code paths.
+- [ ] **DOC-01**: Repository root **LICENSE** (e.g. MIT) chosen and committed; **README** license section updated from placeholder to match; optional **CONTRIBUTING.md** stub only if it adds real value (not boilerplate noise).
 
-### Graph operations
+### Dependencies & operator polish
 
-- [x] **REC-01**: Reconciliation workflows in `reconcile.py` are exposed or documented for operator use at a defined scope (CLI and/or dashboard), with safe merge behavior consistent with existing patterns.
+- [ ] **PERF-01**: Address **`fuzzywuzzy` / Levenshtein** runtime warning: add optional **`python-Levenshtein`** (or documented alternative) in `pyproject.toml` / lockfile where appropriate, and note in README or reconcile section.
 
-### Analytics (Phase 4)
+## Deferred (post–v1.1)
 
-- [x] **MET-01**: An initial **production complexity / cost signal** derived from graph density (or related structural stats) is available in a form consumable from the app or CLI, without replacing existing structural metrics.
+- **SENT-01**: Optional sentiment or subtext on edges — only if grounded in `source_quote` and secondary to structural metrics (`strategy.md`).
+- **CI-01**: GitHub Actions (lint + tests) — optional follow-on once QA-01/02 exist.
 
-## v2 (deferred)
-
-- **SENT-01**: Optional sentiment or subtext on edges—only if grounded in `source_quote` and secondary to structural metrics (`strategy.md`).
-
-## Out of scope (v1)
+## Out of scope (v1.1)
 
 - **STACK-01**: Migrating off Neo4j, Streamlit, or the current LLM extraction stack.
-- **VIBE-01**: Scoring “feel” of scenes without graph-level evidence.
+- **VIBE-01**: Scoring “feel” without graph-level evidence.
 
 ## Traceability
 
-| REQ-ID  | Phase | Status   |
-|---------|-------|----------|
-| CONFIG-01 | 1 | Done (2026-04-03) |
-| GEN-01    | 1 | Done (2026-04-03) |
-| REL-01    | 2 | Done (2026-04-03) |
-| REC-01    | 3 | Done (2026-04-03) |
-| MET-01    | 4 | Done (2026-04-04) |
+| REQ-ID   | Phase | Status        |
+|----------|-------|---------------|
+| QA-01    | 5     | Not started   |
+| QA-02    | 5     | Not started   |
+| DOC-01   | 6     | Not started   |
+| PERF-01  | 7     | Not started   |
 
-*Aligned with `.planning/ROADMAP.md` (coarse v1 track).*
+### v1.0 (complete)
+
+| REQ-ID    | Phase | Status           |
+|-----------|-------|------------------|
+| CONFIG-01 | 1     | Done (2026-04-03) |
+| GEN-01    | 1     | Done (2026-04-03) |
+| REL-01    | 2     | Done (2026-04-03) |
+| REC-01    | 3     | Done (2026-04-03) |
+| MET-01    | 4     | Done (2026-04-04) |
+
+*Aligned with `.planning/ROADMAP.md`.*

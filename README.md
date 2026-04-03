@@ -111,7 +111,8 @@ neo4j does **not** read english. it stores **nodes and edges**. streamlit asks *
                                ▼
                       ┌─────────────────┐
                       │  STREAMLIT      │
-                      │  metrics.py     │
+                      │  app.py         │
+                      │  (→ metrics.py) │
                       └─────────────────┘
 ```
 
@@ -161,7 +162,7 @@ wide-layout streamlit. six tabs (plus **pipeline** when enabled):
 | **cleanup review** | plain-english **corrections** (what broke + compact before/after summaries). **warnings** with graph paths + approve/decline for qa. **approve & load to neo4j**. |
 | **reconcile** | scan for **ghost-like characters** (single scene, no conflicts) and **fuzzy duplicate names** for `:Character` and `:Location`; optional confirmed **merges** (rewire relationships, keep one id). |
 | **pipeline efficiency tracking** | table of past runs from neo4j: scenes, corrections, warnings, telemetry tokens/cost, agent opt. version. |
-| **dashboard** | **structural load** (MET-01: narrative edges per scene + entity counts), **narrative momentum** (per-scene heat = `CONFLICTS_WITH / (INTERACTS_WITH + CONFLICTS_WITH)`, 3-scene rolling mean, dashed act boundaries), **payoff matrix** (long-horizon props > 10 scene gap), **power shift** (passivity index for top 5 characters by act). x/n scenes banner. `st.warning` if protagonist regresses. |
+| **dashboard** | **structural load** (MET-01: narrative edges per scene + entity counts), **narrative momentum** (per-scene heat = `CONFLICTS_WITH / (INTERACTS_WITH + CONFLICTS_WITH)`, 3-scene rolling mean, dashed act boundaries), **payoff matrix** (long-horizon props > 10 scene gap), **power shift** (passivity index for top **K** characters by act; **K** = `SCRIPTRAG_TOP_CHARACTERS` or default **5**). x/n scenes banner. `st.warning` if **primary lead** regresses (see env vars). |
 | **investigate** | ask questions about the script's structure via natural language → cypher (`agent.py`). |
 
 pipeline tab is hidden when `DISABLE_PIPELINE=1` (read-only deployments).
@@ -238,10 +239,21 @@ NEO4J_PASSWORD=...
 # read-only deployment: hide pipeline tab
 # DISABLE_PIPELINE=1
 
-# optional: langsmith
+# optional: pin primary lead for dashboard regression (snake_case Character id)
+# SCRIPTRAG_PRIMARY_LEAD_ID=
+
+# optional: power-shift chart — top N characters (default 5, max 50)
+# SCRIPTRAG_TOP_CHARACTERS=
+
+# optional: durable local files (e.g. pipeline log); Render → /var/data + disk
+# PERSISTENT_DATA_DIR=/var/data
+
+# optional: langsmith (see .env.example for full list)
 # LANGCHAIN_API_KEY=...
 # LANGCHAIN_TRACING_V2=false
 ```
+
+Full list of variables (including LangSmith) is in [`.env.example`](.env.example).
 
 ## deployment
 
@@ -307,7 +319,9 @@ GraphRAG/
 ├── neo4j_loader.py            # json → neo4j (exports load_entries)
 ├── schema.py                  # pydantic graph contract
 ├── metrics.py                 # cypher analytics
-├── app.py                     # streamlit: pipeline, cleanup review, efficiency, dashboard, investigate
+├── app.py                     # streamlit: pipeline, cleanup, reconcile, efficiency, dashboard, investigate
+├── reconcile.py               # fuzzy duplicate + ghost scan; character/location merge (cli + tab)
+├── lead_resolution.py         # primary lead + top-K from graph; SCRIPTRAG_* overrides
 ├── pipeline_runs.py           # :PipelineRun metrics in neo4j
 ├── cleanup_review.py          # plain-english correction summaries + warning paths
 ├── agent.py                   # nl → cypher
