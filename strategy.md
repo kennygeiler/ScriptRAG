@@ -64,11 +64,13 @@ Use this as a checklist; flip items when reality changes.
 
 - [x] **Timeline empty states:** Narrative Timeline charts guard empty Cypher results and missing columns.
 - [x] **Full script-agnostic UI (primary lead):** Regression uses `lead_resolution` — env override `SCRIPTRAG_PRIMARY_LEAD_ID` or analysis rank #1; cohort size `SCRIPTRAG_TOP_CHARACTERS`.
+- [x] **Graph reliability (REL-01):** Dashboard `@st.cache_data` Neo4j loaders return empty shapes on connection/query errors (`logging.exception`, no `st.*` in cache). Momentum / payoff / power-shift guard DataFrame columns and character ids. **`agent.py`** builds `Neo4jGraph` / `GraphCypherQAChain` lazily (`_get_chain()`); import does not require Neo4j env at load time. **Investigate** tab wraps chat errors; **Cleanup Review** uses safe dict access on corrections.
 
 ### Explicitly not started (roadmap)
 
-- **Phase 3:** Production complexity / cost signals from graph density.
-- **Phase 4 (exploratory):** Sentiment or subtext on edges **only** if grounded in `source_quote` and secondary to structural metrics.
+- **Phase 3 (v1 roadmap):** Reconciliation for operators — **REC-01** (`reconcile.py` exposure/docs).
+- **Phase 4 (v1 roadmap):** Production complexity / cost signal — **MET-01**.
+- **Exploratory (not v1 roadmap):** Sentiment or subtext on edges **only** if grounded in `source_quote` and secondary to structural metrics.
 
 ---
 

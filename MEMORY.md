@@ -14,9 +14,11 @@
 | **Cleanup Review** | Plain-English corrections + compact before/after; warnings with graph paths + approve/decline; **Approve & Load** applies approved warning edits (lexicon node drop, duplicate merge, audit edge removal) then loads Neo4j |
 | **Pipeline Efficiency Tracking** | Table of **:PipelineRun** rows: telemetry tokens/cost, corrections/warnings counts, agent opt. version |
 | **Dashboard** | Momentum line (rolling heat), Payoff Matrix (long-gap props), Power shift (top **K** × 3 acts, **K** from `SCRIPTRAG_TOP_CHARACTERS` or default 5), primary-lead regression warning; X/N scenes banner |
-| **Investigate** | Natural language → Cypher (`agent.py`) |
+| **Investigate** | Natural language → Cypher (`agent.py`); Neo4j graph/chain init is **lazy** — app loads if DB is down; user gets a plain message |
 
 Pipeline tab hidden when `DISABLE_PIPELINE=1` (read-only deployments).
+
+**Resilience (REL-01):** Cached dashboard Neo4j reads log failures and return empty data so charts hit existing `st.info` / `st.warning` paths. Payoff/momentum/power-shift check columns/ids before plotting.
 
 ## Act structure (dynamic)
 

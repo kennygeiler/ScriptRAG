@@ -11,7 +11,7 @@ Requirements for the **current planning milestone**: hardening, generalization, 
 
 ### Reliability & UX
 
-- [ ] **REL-01**: When Neo4j is empty, partially loaded, or query results lack expected columns, the Streamlit dashboard shows explicit empty states or safe fallbacks—no uncaught exceptions in metric/DataFrame code paths.
+- [x] **REL-01**: When Neo4j is empty, partially loaded, or query results lack expected columns, the Streamlit dashboard shows explicit empty states or safe fallbacks—no uncaught exceptions in metric/DataFrame code paths.
 
 ### Graph operations
 
@@ -36,7 +36,7 @@ Requirements for the **current planning milestone**: hardening, generalization, 
 |---------|-------|----------|
 | CONFIG-01 | 1 | Done (2026-04-03) |
 | GEN-01    | 1 | Done (2026-04-03) |
-| REL-01    | 2 | Not started |
+| REL-01    | 2 | Done (2026-04-03) |
 | REC-01    | 3 | Not started |
 | MET-01    | 4 | Not started |
 

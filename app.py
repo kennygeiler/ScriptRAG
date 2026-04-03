@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
+
+from neo4j.exceptions import AuthError, Neo4jError, ServiceUnavailable
 
 load_dotenv()
 
@@ -35,6 +38,8 @@ from metrics import (
 from neo4j_loader import load_entries
 from parser import parse_fdx_to_raw_scenes, write_raw_scenes_json
 from pipeline_runs import list_pipeline_runs, save_pipeline_run
+
+_log = logging.getLogger(__name__)
 
 ROLLING_SCENES = 3
 PAYOFF_MIN_SCENE_GAP = 10
@@ -140,7 +145,14 @@ def _cached_momentum_rows(_artifact_stamp: tuple[float, float]) -> list[dict[str
     del _artifact_stamp
     drv = get_driver()
     try:
-        return get_narrative_momentum_by_scene(driver=drv)
+        try:
+            return get_narrative_momentum_by_scene(driver=drv)
+        except (Neo4jError, ServiceUnavailable, AuthError, OSError):
+            _log.exception("Cached narrative momentum load failed")
+            return []
+        except Exception:
+            _log.exception("Cached narrative momentum load failed")
+            return []
     finally:
         drv.close()
 
@@ -150,7 +162,14 @@ def _cached_payoff_props(_artifact_stamp: tuple[float, float]) -> list[dict[str,
     del _artifact_stamp
     drv = get_driver()
     try:
-        return get_payoff_prop_timelines(min_scene_gap=PAYOFF_MIN_SCENE_GAP, driver=drv)
+        try:
+            return get_payoff_prop_timelines(min_scene_gap=PAYOFF_MIN_SCENE_GAP, driver=drv)
+        except (Neo4jError, ServiceUnavailable, AuthError, OSError):
+            _log.exception("Cached payoff prop timelines load failed")
+            return []
+        except Exception:
+            _log.exception("Cached payoff prop timelines load failed")
+            return []
     finally:
         drv.close()
 
@@ -160,7 +179,14 @@ def _cached_top_characters(_artifact_stamp: tuple[float, float], top_k: int) -> 
     del _artifact_stamp
     drv = get_driver()
     try:
-        return get_top_characters_by_interaction_count(top_k, driver=drv)
+        try:
+            return get_top_characters_by_interaction_count(top_k, driver=drv)
+        except (Neo4jError, ServiceUnavailable, AuthError, OSError):
+            _log.exception("Cached top characters load failed")
+            return []
+        except Exception:
+            _log.exception("Cached top characters load failed")
+            return []
     finally:
         drv.close()
 
@@ -170,9 +196,16 @@ def _cached_primary_lead(_artifact_stamp: tuple[float, float]) -> tuple[str | No
     del _artifact_stamp
     drv = get_driver()
     try:
-        override = bool(os.environ.get("SCRIPTRAG_PRIMARY_LEAD_ID", "").strip())
-        pid = resolve_primary_character_id(driver=drv)
-        return (pid, override)
+        try:
+            override = bool(os.environ.get("SCRIPTRAG_PRIMARY_LEAD_ID", "").strip())
+            pid = resolve_primary_character_id(driver=drv)
+            return (pid, override)
+        except (Neo4jError, ServiceUnavailable, AuthError, OSError):
+            _log.exception("Cached primary lead resolution failed")
+            return (None, False)
+        except Exception:
+            _log.exception("Cached primary lead resolution failed")
+            return (None, False)
     finally:
         drv.close()
 
@@ -182,7 +215,14 @@ def _cached_act_bounds(_artifact_stamp: tuple[float, float]) -> dict[str, Any] |
     del _artifact_stamp
     drv = get_driver()
     try:
-        return get_script_act_bounds(driver=drv)
+        try:
+            return get_script_act_bounds(driver=drv)
+        except (Neo4jError, ServiceUnavailable, AuthError, OSError):
+            _log.exception("Cached script act bounds load failed")
+            return None
+        except Exception:
+            _log.exception("Cached script act bounds load failed")
+            return None
     finally:
         drv.close()
 
@@ -199,17 +239,24 @@ def _cached_act_passivity_matrix(
     act1_lo, act1_hi, act2_lo, act2_hi, act3_lo, act3_hi = act_bounds_key
     drv = get_driver()
     try:
-        out: dict[str, list[float | None]] = {}
-        for cid in char_ids:
-            a1 = get_passivity_in_scene_window(cid, act1_lo, act1_hi, driver=drv)
-            a2 = get_passivity_in_scene_window(cid, act2_lo, act2_hi, driver=drv)
-            a3 = get_passivity_in_scene_window(cid, act3_lo, act3_hi, driver=drv)
-            out[cid] = [
-                a1.get("passivity"),
-                a2.get("passivity"),
-                a3.get("passivity"),
-            ]
-        return out
+        try:
+            out: dict[str, list[float | None]] = {}
+            for cid in char_ids:
+                a1 = get_passivity_in_scene_window(cid, act1_lo, act1_hi, driver=drv)
+                a2 = get_passivity_in_scene_window(cid, act2_lo, act2_hi, driver=drv)
+                a3 = get_passivity_in_scene_window(cid, act3_lo, act3_hi, driver=drv)
+                out[cid] = [
+                    a1.get("passivity"),
+                    a2.get("passivity"),
+                    a3.get("passivity"),
+                ]
+            return out
+        except (Neo4jError, ServiceUnavailable, AuthError, OSError):
+            _log.exception("Cached act passivity matrix failed")
+            return {}
+        except Exception:
+            _log.exception("Cached act passivity matrix failed")
+            return {}
     finally:
         drv.close()
 
@@ -219,9 +266,19 @@ def _cached_event_count(_artifact_stamp: tuple[float, float]) -> int:
     del _artifact_stamp
     drv = get_driver()
     try:
-        with drv.session() as session:
-            rec = session.run("MATCH (e:Event) RETURN count(e) AS c").single()
-            return int(rec["c"]) if rec else 0
+        try:
+            with drv.session() as session:
+                rec = session.run("MATCH (e:Event) RETURN count(e) AS c").single()
+                if rec is None:
+                    return 0
+                raw = rec.get("c", 0)
+                return int(raw) if raw is not None else 0
+        except (Neo4jError, ServiceUnavailable, AuthError, OSError):
+            _log.exception("Cached event count failed")
+            return 0
+        except Exception:
+            _log.exception("Cached event count failed")
+            return 0
     finally:
         drv.close()
 
@@ -265,6 +322,9 @@ def _render_momentum_chart(
     df = pd.DataFrame(rows)
     if "scene_number" not in df.columns:
         st.warning("Momentum query returned no scene numbers.")
+        return
+    if "heat" not in df.columns or df["heat"].isna().all():
+        st.warning("Momentum data missing heat values.")
         return
 
     df = df.sort_values("scene_number")
@@ -328,6 +388,10 @@ def _render_payoff_matrix(props: list[dict[str, Any]]) -> None:
         return
 
     df = pd.DataFrame(props)
+    _payoff_cols = {"id", "first_scene", "last_scene", "gap"}
+    if not _payoff_cols.issubset(df.columns):
+        st.warning("Payoff data missing expected columns.")
+        return
     df["label"] = df.apply(
         lambda r: f"{r.get('name') or r['id']} ({r['id']})" if r.get("name") != r.get("id") else str(r["id"]),
         axis=1,
@@ -381,6 +445,10 @@ def _render_power_shift(
     if not top_chars:
         st.info("No characters with interaction edges found.")
         return
+    valid_chars = [c for c in top_chars if isinstance(c, dict) and c.get("id") is not None]
+    if not valid_chars:
+        st.warning("Character rank data is missing ids — cannot chart power shift.")
+        return
     if not act_bounds or not matrix:
         st.info("No :Event scene span in Neo4j — load events to chart act passivity.")
         return
@@ -392,7 +460,7 @@ def _render_power_shift(
     ]
     fig = go.Figure()
     palette = ["#2563eb", "#dc2626", "#ca8a04", "#7c3aed", "#059669"]
-    for i, c in enumerate(top_chars):
+    for i, c in enumerate(valid_chars):
         cid = str(c["id"])
         series = matrix.get(cid, [None, None, None])
         fig.add_trace(
@@ -468,7 +536,11 @@ top_chars = _cached_top_characters(_DASH_STAMP, _TOP_K)
 _act_bounds = _cached_act_bounds(_DASH_STAMP)
 _act_bounds_key = _act_bounds_six(_act_bounds) if _act_bounds else None
 _primary_id, _primary_override = _cached_primary_lead(_DASH_STAMP)
-_ids_tuple = tuple(str(c["id"]) for c in top_chars)
+_ids_tuple = tuple(
+    str(c["id"])
+    for c in top_chars
+    if isinstance(c, dict) and c.get("id") is not None
+)
 _extra_ids = list(_ids_tuple)
 if _primary_id:
     _extra_ids.append(_primary_id)
@@ -847,10 +919,15 @@ with tab_editor:
         if pr["corrections"]:
             st.subheader(f"Corrections ({n_corrections})")
             for corr in pr["corrections"]:
-                sn = corr["scene_number"]
-                heading = corr["heading"] or "untitled"
+                if not isinstance(corr, dict):
+                    continue
+                sn = corr.get("scene_number", "?")
+                heading = corr.get("heading") or "untitled"
+                audit_entries = corr.get("audit_entries")
+                if not isinstance(audit_entries, list):
+                    continue
                 with st.expander(f"Scene {sn} — {heading}", expanded=False):
-                    for entry in corr["audit_entries"]:
+                    for entry in audit_entries:
                         node = entry.get("node", "?")
                         detail = entry.get("detail", "")
 
@@ -1073,7 +1150,18 @@ with tab_investigate:
             st.markdown(user_input)
         st.session_state.messages.append({"role": "user", "content": user_input})
 
-        response = ask_narrative_mri(user_input)
+        exc_name: str | None = None
+        try:
+            response = ask_narrative_mri(user_input)
+        except Exception as exc:
+            _log.exception("Investigate chat failed")
+            response = (
+                "Something went wrong running the graph query. Check Neo4j and try again."
+            )
+            exc_name = type(exc).__name__
         with st.chat_message("assistant"):
             st.markdown(response)
+            if exc_name:
+                with st.expander("Technical detail"):
+                    st.code(exc_name, language="text")
         st.session_state.messages.append({"role": "assistant", "content": response})

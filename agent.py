@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 
 from dotenv import load_dotenv
@@ -8,6 +9,8 @@ from langchain_core.prompts import PromptTemplate
 from langchain_neo4j import GraphCypherQAChain, Neo4jGraph
 
 load_dotenv()
+
+_log = logging.getLogger(__name__)
 
 # Hard-locked Cypher prompt; template uses only {question} (LangChain-injected graph schema is not referenced here).
 CYPHER_GENERATION_TEMPLATE = """Task: Generate a Cypher query to answer the user question.
@@ -69,30 +72,65 @@ Helpful Answer:"""
 
 qa_prompt = PromptTemplate(template=QA_ANSWER_TEMPLATE, input_variables=["context", "question"])
 
-# If the Neo4j server has the APOC plugin, set refresh_schema=True for full schema introspection.
-graph = Neo4jGraph(
-    url=os.environ["NEO4J_URI"],
-    username=os.environ["NEO4J_USER"],
-    password=os.environ["NEO4J_PASSWORD"],
-    refresh_schema=False,
-)
+_graph: Neo4jGraph | None = None
+_chain: GraphCypherQAChain | None = None
+_chain_init_failed = False
 
+# If the Neo4j server has the APOC plugin, set refresh_schema=True for full schema introspection.
 llm = ChatAnthropic(model="claude-sonnet-4-6", temperature=0)
 
-chain = GraphCypherQAChain.from_llm(
-    llm=llm,
-    graph=graph,
-    cypher_prompt=cypher_prompt,
-    qa_prompt=qa_prompt,
-    verbose=True,
-    allow_dangerous_requests=True,
-)
+
+def _get_chain() -> GraphCypherQAChain | None:
+    global _graph, _chain, _chain_init_failed
+    if _chain is not None:
+        return _chain
+    if _chain_init_failed:
+        return None
+    uri = os.environ.get("NEO4J_URI", "").strip()
+    user = os.environ.get("NEO4J_USER", "").strip()
+    password = os.environ.get("NEO4J_PASSWORD", "").strip()
+    if not uri or not user or not password:
+        _log.warning(
+            "Investigate: missing NEO4J_URI, NEO4J_USER, or NEO4J_PASSWORD — chain disabled"
+        )
+        _chain_init_failed = True
+        return None
+    try:
+        _graph = Neo4jGraph(
+            url=uri,
+            username=user,
+            password=password,
+            refresh_schema=False,
+        )
+        _chain = GraphCypherQAChain.from_llm(
+            llm=llm,
+            graph=_graph,
+            cypher_prompt=cypher_prompt,
+            qa_prompt=qa_prompt,
+            verbose=True,
+            allow_dangerous_requests=True,
+        )
+        return _chain
+    except Exception:
+        _log.exception("Investigate: Neo4j graph or chain init failed")
+        _chain_init_failed = True
+        return None
 
 
 def ask_narrative_mri(query: str) -> str:
-    result = chain.invoke({"query": query})
-    out = result.get("result", result)
-    return out if isinstance(out, str) else str(out)
+    c = _get_chain()
+    if c is None:
+        return (
+            "The investigation assistant could not connect to Neo4j. Check NEO4J_URI, "
+            "NEO4J_USER, NEO4J_PASSWORD in .env and that the database is reachable."
+        )
+    try:
+        result = c.invoke({"query": query})
+        out = result.get("result", result)
+        return out if isinstance(out, str) else str(out)
+    except Exception:
+        _log.exception("Investigate: chain.invoke failed")
+        return "Query failed — check Neo4j and server logs."
 
 
 if __name__ == "__main__":

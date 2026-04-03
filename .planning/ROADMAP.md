@@ -11,7 +11,7 @@ This milestone takes ScriptRAG from Cinema Four–centric defaults and brittle d
 - Decimal phases (e.g. 2.1): Urgent insertions via `/gsd-insert-phase`
 
 - [x] **Phase 1: Config & script-generalized dashboard** — Leads are **analysis-discerned** from the graph/metrics; optional env/project config **overrides**; script-agnostic copy across **all** Streamlit tabs (not dashboard-only).
-- [ ] **Phase 2: Graph reliability & empty states** — Empty, partial, or schema-skewed Neo4j never takes down Streamlit metric paths.
+- [x] **Phase 2: Graph reliability & empty states** — Empty, partial, or schema-skewed Neo4j never takes down Streamlit metric paths.
 - [ ] **Phase 3: Reconciliation for operators** — `reconcile.py` workflows are usable and documented at a defined scope with safe merge semantics.
 - [ ] **Phase 4: Production complexity signal** — Initial density- or structure-derived complexity/cost signal in app or CLI, alongside existing metrics.
 
@@ -36,7 +36,7 @@ This milestone takes ScriptRAG from Cinema Four–centric defaults and brittle d
   1. With Neo4j empty, unreachable, or partially loaded, affected tabs show explicit empty states, safe fallbacks, or clear operator-facing errors—not uncaught exceptions in the UI.
   2. When query results lack expected columns or rows, metric and DataFrame code paths avoid KeyErrors and broken tables; user sees a controlled message or degraded view.
   3. Operator can walk primary flows (e.g. pipeline, cleanup review, dashboard, investigate) without hitting traceback pages solely because graph data is absent or incomplete.
-**Plans**: `02-01-PLAN.md` (REL-01 — cached loaders, chart guards, lazy agent, Cleanup safe access)
+**Plans**: `02-01-PLAN.md` (executed 2026-04-03; summary `02-01-SUMMARY.md`)
 **UI hint**: yes
 
 ### Phase 3: Reconciliation for operators
@@ -68,6 +68,6 @@ This milestone takes ScriptRAG from Cinema Four–centric defaults and brittle d
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Config & script-generalized dashboard | 2/2 | Complete | 2026-04-03 |
-| 2. Graph reliability & empty states | 1 planned (`02-01`) | Planned | - |
+| 2. Graph reliability & empty states | 1/1 | Complete | 2026-04-03 |
 | 3. Reconciliation for operators | TBD | Not started | - |
 | 4. Production complexity signal | TBD | Not started | - |
