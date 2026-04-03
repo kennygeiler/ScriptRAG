@@ -47,7 +47,7 @@ full detail lives in [`strategy.md`](strategy.md). quick context: [`MEMORY.md`](
 | **ingest** | `ingest.py` + `schema.py` | **per scene**: claude + **instructor** → `SceneGraph`; two-phase self-healing (deterministic rules → llm auditors); edges need `source_id`, `target_id`, `type`, **`source_quote`**. |
 | **load** | `neo4j_loader.py` | merge `:Character` `:Location` `:Prop` `:Event`, `IN_SCENE`, narrative rels. |
 | **analyze** | `metrics.py` | parameterized cypher → momentum, payoff props, passivity windows, etc. |
-| **ui** | `app.py` | streamlit + plotly: pipeline, cleanup review, reconcile, efficiency tracking, dashboard, investigate. |
+| **ui** | `app.py` | streamlit + plotly: pipeline, cleanup, reconcile, **data out**, efficiency, dashboard, investigate. |
 
 neo4j does **not** read english. it stores **nodes and edges**. streamlit asks **metrics**; metrics ask **cypher**.
 
@@ -160,7 +160,8 @@ wide-layout streamlit. six tabs (plus **pipeline** when enabled):
 |-----|------------|
 | **pipeline** | upload `.fdx`, run full extraction in-process with live per-scene progress; pass/fix/fail status; telemetry metrics; saves a **:PipelineRun** row in neo4j after each run. |
 | **cleanup review** | plain-english **corrections** (what broke + compact before/after summaries). **warnings** with graph paths + approve/decline for qa. **approve & load to neo4j**. |
-| **reconcile** | scan for **ghost-like characters** (single scene, no conflicts) and **fuzzy duplicate names** for `:Character` and `:Location`; optional confirmed **merges** (rewire relationships, keep one id). |
+| **reconcile** | optional **post-load** hygiene: **ghost-like characters** (single scene, no conflicts) and **fuzzy duplicate names** for `:Character` and `:Location`; optional confirmed **merges** (rewire relationships, keep one id). |
+| **data out** | **manipulable data** after load: schema card, live node-label / rel-type counts, fixed **recipe cypher** (read-only), **csv** downloads (narrative edges, characters, events). |
 | **pipeline efficiency tracking** | table of past runs from neo4j: scenes, corrections, warnings, telemetry tokens/cost, agent opt. version. |
 | **dashboard** | **structural load** (MET-01: narrative edges per scene + entity counts), **narrative momentum** (per-scene heat = `CONFLICTS_WITH / (INTERACTS_WITH + CONFLICTS_WITH)`, 3-scene rolling mean, dashed act boundaries), **payoff matrix** (long-horizon props > 10 scene gap), **power shift** (passivity index for top **K** characters by act; **K** = `SCRIPTRAG_TOP_CHARACTERS` or default **5**). x/n scenes banner. `st.warning` if **primary lead** regresses (see env vars). |
 | **investigate** | ask questions about the script's structure via natural language → cypher (`agent.py`). |
@@ -245,6 +246,9 @@ NEO4J_PASSWORD=...
 # optional: power-shift chart — top N characters (default 5, max 50)
 # SCRIPTRAG_TOP_CHARACTERS=
 
+# optional: demo tab order — cleanup → data out → reconcile → … (ceo / pipeline storytelling)
+# SCRIPTRAG_DEMO_LAYOUT=1
+
 # optional: durable local files (e.g. pipeline log); Render → /var/data + disk
 # PERSISTENT_DATA_DIR=/var/data
 
@@ -319,7 +323,8 @@ GraphRAG/
 ├── neo4j_loader.py            # json → neo4j (exports load_entries)
 ├── schema.py                  # pydantic graph contract
 ├── metrics.py                 # cypher analytics
-├── app.py                     # streamlit: pipeline, cleanup, reconcile, efficiency, dashboard, investigate
+├── data_out.py                # schema card, recipe queries, csv-oriented exports for data out tab
+├── app.py                     # streamlit: pipeline, cleanup, reconcile, data out, efficiency, dashboard, investigate
 ├── reconcile.py               # fuzzy duplicate + ghost scan; character/location merge (cli + tab)
 ├── lead_resolution.py         # primary lead + top-K from graph; SCRIPTRAG_* overrides
 ├── pipeline_runs.py           # :PipelineRun metrics in neo4j

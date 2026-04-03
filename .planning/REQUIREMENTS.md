@@ -1,6 +1,14 @@
-# Requirements — ScriptRAG (v1.1 GSD track)
+# Requirements — ScriptRAG (GSD)
 
-Requirements for the **current planning milestone**: automated tests for critical analytics/reconcile paths, explicit open-source licensing, and small dependency/operator polish. v1.0 REQ-IDs remain satisfied; see `.planning/MILESTONES.md` and the traceability table at the end for v1.0 history.
+**Active tracks:** **v1.2** (demo / data-out flow) and **v1.1** (quality & open-source hygiene) — see `.planning/ROADMAP.md` for phase order.
+
+## v1.2 Requirements — Demo & data-out flow
+
+### Product flow
+
+- [x] **OUT-01**: **Data out** tab — schema card, live Neo4j label/rel counts, fixed **recipe Cypher** (parameterized), CSV export for narrative edges (capped), characters, events. *Phase 8 — shipped 2026-04-03 (`08-01-SUMMARY.md`).*
+- [x] **FLOW-01**: **HITL + observability narrative** — Cleanup HITL gate banner; Efficiency tab frames **:PipelineRun** as agentic pipeline telemetry. *Phase 9 — shipped 2026-04-03 (`09-01-SUMMARY.md`).*
+- [x] **DEMO-01**: **`SCRIPTRAG_DEMO_LAYOUT`** reorders tabs (Cleanup → Data out → Reconcile…); demo sidebar + Investigate copy. *Phase 10 — shipped 2026-04-03 (`10-01-SUMMARY.md`).*
 
 ## v1.1 Requirements
 
@@ -31,6 +39,9 @@ Requirements for the **current planning milestone**: automated tests for critica
 
 | REQ-ID   | Phase | Status        |
 |----------|-------|---------------|
+| OUT-01   | 8     | Done (2026-04-03) |
+| FLOW-01  | 9     | Done (2026-04-03) |
+| DEMO-01  | 10    | Done (2026-04-03) |
 | QA-01    | 5     | Not started   |
 | QA-02    | 5     | Not started   |
 | DOC-01   | 6     | Not started   |

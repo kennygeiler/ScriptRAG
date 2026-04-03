@@ -12,12 +12,13 @@
 |-----|---------|
 | **Pipeline** | Upload FDX, run full extraction in-process (parse → lexicon → per-scene LangGraph); live progress; persists **:PipelineRun** to Neo4j after each run |
 | **Cleanup Review** | Plain-English corrections + compact before/after; warnings with graph paths + approve/decline; **Approve & Load** applies approved warning edits (lexicon node drop, duplicate merge, audit edge removal) then loads Neo4j |
-| **Reconcile** | Scan Neo4j for ghost characters + fuzzy **Character** / **Location** name pairs (`reconcile.py`); optional merge with checkbox + pair picker (same merge semantics as CLI: APOC or manual rewire) |
+| **Reconcile** | Optional post-load hygiene: ghost characters + fuzzy **Character** / **Location** name pairs (`reconcile.py`); optional merge with checkbox + pair picker (APOC or manual rewire) |
+| **Data out** | Schema card, live Neo4j label/rel counts, fixed recipe Cypher (`data_out.py`), CSV downloads (narrative edges, characters, events) |
 | **Pipeline Efficiency Tracking** | Table of **:PipelineRun** rows: telemetry tokens/cost, corrections/warnings counts, agent opt. version |
 | **Dashboard** | **Structural load** (MET-01: narrative edges ÷ scenes + entity counts), momentum line (rolling heat), Payoff Matrix (long-gap props), Power shift (top **K** × 3 acts, **K** from `SCRIPTRAG_TOP_CHARACTERS` or default 5), primary-lead regression warning; X/N scenes banner |
 | **Investigate** | Natural language → Cypher (`agent.py`); Neo4j graph/chain init is **lazy** — app loads if DB is down; user gets a plain message |
 
-Pipeline tab hidden when `DISABLE_PIPELINE=1` (read-only deployments).
+Pipeline tab hidden when `DISABLE_PIPELINE=1` (read-only deployments). **`SCRIPTRAG_DEMO_LAYOUT=1`** reorders tabs so **Data out** sits right after **Cleanup Review** (CEO / pipeline demos).
 
 **Resilience (REL-01):** Cached dashboard Neo4j reads log failures and return empty data so charts hit existing `st.info` / `st.warning` paths. Payoff/momentum/power-shift check columns/ids before plotting.
 

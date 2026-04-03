@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.1
-milestone_name: quality_tests_opensource
-status: planning
-stopped_at: New milestone initialized — define Phase 5 plans (QA-01, QA-02)
-last_updated: "2026-04-03T12:00:00.000Z"
-last_activity: 2026-04-03 — /gsd-new-milestone; docs polish; REQUIREMENTS + ROADMAP for v1.1
+milestone: v1.2
+milestone_name: demo_data_out_flow
+status: milestone_complete
+stopped_at: v1.2 Phases 8–10 complete — OUT-01, FLOW-01, DEMO-01 shipped
+last_updated: "2026-04-03T19:30:00.000Z"
+last_activity: 2026-04-03 — Phase 10 SCRIPTRAG_DEMO_LAYOUT
 progress:
   total_phases: 3
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  completed_phases: 3
+  total_plans: 3
+  completed_plans: 3
+  percent: 100
 ---
 
 # Project State
@@ -22,31 +22,28 @@ See: `.planning/PROJECT.md`
 
 **Core value:** End-to-end, evidence-backed structural analysis of a screenplay in a queryable graph—with pipeline, Neo4j, metrics, reconciliation, and investigation.
 
-**Current focus:** **v1.1** — pytest foundations (QA-01/02), LICENSE + README (DOC-01), Levenshtein / fuzzy polish (PERF-01).
+**Current focus:** **v1.2 complete** (demo / data-out flow). **v1.1** (pytest, LICENSE, Levenshtein) still open in parallel.
 
 ## Current Position
 
-Phase: **5** of 7 (v1.1 track; v1.0 phases 1–4 complete)  
-Plan: — (run `/gsd-plan-phase` for Phase 5)  
-Status: **Planning** — requirements defined; roadmap ready  
-Last activity: 2026-04-03 — milestone rollover + documentation alignment
+Phase: **10** of 10 (v1.2) — **Complete**  
+Plan: `10-01-SUMMARY.md`  
+Status: **Milestone slice done**  
+Last activity: 2026-04-03
 
-Progress: [░░░░░░░░░░] 0% (v1.1)
-
-## Performance Metrics
-
-*Reset for v1.1 — update after first plan completes.*
+Progress: [██████████] 100% (v1.2)
 
 ## Accumulated Context
 
 ### Decisions
 
-- Phase numbering **continues** from v1.0 (next execution phase = **5**); v1.0 archive lives under **Completed milestone v1.0** in `.planning/ROADMAP.md`.
-- Parallel web research skipped for v1.1; scope grounded in `strategy.md` §6 and shipped code.
+- **Default tab order** remains operator-oriented (Reconcile before Data out); **demo order** opt-in via env.
+- v1.1 not superseded — run Phases 5–7 when ready.
 
 ### Pending Todos
 
-- Author `05-01-PLAN.md` (and follow-ons) for QA-01/QA-02 once discuss-phase or direct planning is run.
+- Browser UAT full demo path with `SCRIPTRAG_DEMO_LAYOUT=1`.
+- `/gsd-complete-milestone` for v1.2 when you want archive + version bump.
 
 ### Blockers/Concerns
 
@@ -55,5 +52,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-04-03  
-Stopped at: Milestone v1.1 initialized; ready for Phase 5 planning  
+Stopped at: v1.2 shipped in repo  
 Resume file: `.planning/ROADMAP.md`

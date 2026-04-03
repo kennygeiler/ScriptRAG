@@ -100,14 +100,17 @@ These definitions are what code should implement; if code diverges, fix code or 
 
 1. **Pipeline** — Upload `.fdx`, run full extraction in-process (parse → lexicon → per-scene `extract_scenes()` with live progress). Stores results in `st.session_state`. On completion, writes a **`:PipelineRun`** row (efficiency metrics; in-app telemetry). Hidden when `DISABLE_PIPELINE=1`.
 2. **Cleanup Review** — Corrections: plain-English explanation + compact before/after (not full JSON). Warnings: pointer into extracted graph + per-warning approve/decline. "Approve & Load to Neo4j" calls `neo4j_loader.load_entries()` (graph wipe spares `:PipelineRun`).
-3. **Reconcile** — Ghost characters + fuzzy Character/Location pairs; optional merges (`reconcile.py`).
-4. **Pipeline Efficiency Tracking** — Reads **`:PipelineRun`** from Neo4j (telemetry tokens/cost and run metadata).
-5. **Dashboard** — X/N scenes banner, **Structural load** (MET-01: `get_structural_load_snapshot`), **Momentum** (Plotly line + area, dashed act-boundary vlines), **Payoff Matrix** (horizontal span bars for long-gap props), **Power shift** (multi-line passivity across three act buckets), primary-lead regression warning.
-6. **Investigate** — Narrative QA / Cypher path (`agent.py`).
+3. **Reconcile** — Optional **post-load** hygiene: ghost characters + fuzzy Character/Location pairs; optional merges (`reconcile.py`).
+4. **Data out** — Schema card, live label/relationship counts, fixed **recipe Cypher** (parameterized), CSV downloads for narrative edges / characters / events (`data_out.py`). Demos **manipulable data** after HITL load.
+5. **Pipeline Efficiency Tracking** — Reads **`:PipelineRun`** from Neo4j (telemetry tokens/cost and run metadata).
+6. **Dashboard** — X/N scenes banner, **Structural load** (MET-01: `get_structural_load_snapshot`), **Momentum** (Plotly line + area, dashed act-boundary vlines), **Payoff Matrix** (horizontal span bars for long-gap props), **Power shift** (multi-line passivity across three act buckets), primary-lead regression warning.
+7. **Investigate** — Narrative QA / Cypher path (`agent.py`).
 
-**Sidebar:** "Reload metrics" clears cache; "Nuke database" in expander for full resets.
+**Sidebar:** "Reload metrics" clears cache; "Nuke database" in expander for full resets. With **`SCRIPTRAG_DEMO_LAYOUT=1`**, a caption explains **demo tab order** (Cleanup → Data out → Reconcile → …).
 
 **Cache:** Dashboard queries use `@st.cache_data` keyed on pipeline artifact mtimes; "Reload metrics" clears cache.
+
+**Demo layout:** Optional env **`SCRIPTRAG_DEMO_LAYOUT`** — when set, tabs 3–4 become **Data out** then **Reconcile** (default production order is the reverse).
 
 ---
 
@@ -119,7 +122,7 @@ These definitions are what code should implement; if code diverges, fix code or 
 
 1. **Automated tests** — pytest (or similar) for `metrics.py` / `reconcile.py` critical paths with mocked Neo4j sessions; optional integration smoke against a disposable DB.
 2. **Repo hygiene** — explicit **LICENSE**, optional **CONTRIBUTING**, CI (lint + tests) if the project goes public.
-3. **Operator UX** — export snapshots (CSV/JSON) from Dashboard; Prop-level reconciliation; richer efficiency / cost rollups.
+3. **Operator UX** — **Data out** tab (CSV exports + recipe queries); optional JSON bundle export; Prop-level reconciliation; richer efficiency / cost rollups.
 4. **Performance** — optional **`python-Levenshtein`** to speed `fuzzywuzzy` in `reconcile.py` (removes runtime warning).
 5. **Exploratory:** Sentiment or subtext on edges **only** with verbatim `source_quote` and secondary placement vs structural metrics (**§3**).
 
@@ -176,6 +179,7 @@ Follow these in every change unless the user explicitly overrides.
 | `pipeline_state.py` | `pipeline_state.json` + `filesystem_snapshot()` |
 | `reconcile.py` | Fuzzy duplicate + ghost scan; Character/Location merge (APOC or manual rewire) |
 | `lead_resolution.py` | Primary lead + top-K from metrics; `SCRIPTRAG_*` env overrides |
+| `data_out.py` | Schema card text, recipe Cypher, CSV-oriented row fetch for **Data out** tab |
 
 ---
 

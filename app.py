@@ -45,6 +45,16 @@ from reconcile import (
     merge_entities,
     run_reconciliation_scan,
 )
+from data_out import (
+    DEMO_QUERY_SPECS,
+    graph_schema_card_markdown,
+    get_label_counts,
+    get_rel_type_counts,
+    rows_characters,
+    rows_events,
+    rows_narrative_edges,
+    run_demo_query,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -69,6 +79,8 @@ def _env_truthy(name: str) -> bool:
 
 
 _PIPELINE_ENABLED = not _env_truthy("DISABLE_PIPELINE")
+# CEO / technical-demo tab order: Cleanup → Data out → Reconcile → … (see README / .env.example).
+_SCRIPTRAG_DEMO_LAYOUT = _env_truthy("SCRIPTRAG_DEMO_LAYOUT")
 
 
 def _persist_pipeline_run(
@@ -328,6 +340,94 @@ def _cached_reconciliation_scan(
                 fuzzy_character_pairs=[],
                 fuzzy_location_pairs=[],
             )
+    finally:
+        drv.close()
+
+
+@st.cache_data(ttl=None)
+def _cached_label_counts(_artifact_stamp: tuple[float, float]) -> list[dict[str, Any]]:
+    del _artifact_stamp
+    drv = get_driver()
+    try:
+        with drv.session() as s:
+            return get_label_counts(s)
+    except Exception:
+        _log.exception("Data out: label counts failed")
+        return []
+    finally:
+        drv.close()
+
+
+@st.cache_data(ttl=None)
+def _cached_rel_type_counts(_artifact_stamp: tuple[float, float]) -> list[dict[str, Any]]:
+    del _artifact_stamp
+    drv = get_driver()
+    try:
+        with drv.session() as s:
+            return get_rel_type_counts(s)
+    except Exception:
+        _log.exception("Data out: relationship type counts failed")
+        return []
+    finally:
+        drv.close()
+
+
+@st.cache_data(ttl=None)
+def _cached_demo_query(
+    _artifact_stamp: tuple[float, float], query_key: str
+) -> list[dict[str, Any]]:
+    del _artifact_stamp
+    drv = get_driver()
+    try:
+        with drv.session() as s:
+            return run_demo_query(s, query_key)
+    except Exception:
+        _log.exception("Data out: demo query failed")
+        return []
+    finally:
+        drv.close()
+
+
+@st.cache_data(ttl=None)
+def _cached_export_edges(
+    _artifact_stamp: tuple[float, float], limit: int
+) -> list[dict[str, Any]]:
+    del _artifact_stamp
+    drv = get_driver()
+    try:
+        with drv.session() as s:
+            return rows_narrative_edges(s, limit=int(limit))
+    except Exception:
+        _log.exception("Data out: narrative edge export failed")
+        return []
+    finally:
+        drv.close()
+
+
+@st.cache_data(ttl=None)
+def _cached_export_characters(_artifact_stamp: tuple[float, float]) -> list[dict[str, Any]]:
+    del _artifact_stamp
+    drv = get_driver()
+    try:
+        with drv.session() as s:
+            return rows_characters(s)
+    except Exception:
+        _log.exception("Data out: character export failed")
+        return []
+    finally:
+        drv.close()
+
+
+@st.cache_data(ttl=None)
+def _cached_export_events(_artifact_stamp: tuple[float, float]) -> list[dict[str, Any]]:
+    del _artifact_stamp
+    drv = get_driver()
+    try:
+        with drv.session() as s:
+            return rows_events(s)
+    except Exception:
+        _log.exception("Data out: event export failed")
+        return []
     finally:
         drv.close()
 
@@ -611,6 +711,11 @@ if _flash := st.session_state.pop("_flash", None):
 # --------------- sidebar --------------------------------------------
 with st.sidebar:
     st.header("Controls")
+    if _SCRIPTRAG_DEMO_LAYOUT:
+        st.caption(
+            "**Demo layout** (`SCRIPTRAG_DEMO_LAYOUT=1`): tabs emphasize **Cleanup → Data out** before reconcile "
+            "and analytics — for pipeline storytelling."
+        )
     with st.expander("Primary lead", expanded=False):
         if _primary_id:
             _src = (
@@ -648,7 +753,24 @@ with st.sidebar:
 _tab_labels: list[str] = []
 if _PIPELINE_ENABLED:
     _tab_labels.append("Pipeline")
-_tab_labels += ["Cleanup Review", "Reconcile", "Pipeline Efficiency Tracking", "Dashboard", "Investigate"]
+if _SCRIPTRAG_DEMO_LAYOUT:
+    _tab_labels += [
+        "Cleanup Review",
+        "Data out",
+        "Reconcile",
+        "Pipeline Efficiency Tracking",
+        "Dashboard",
+        "Investigate",
+    ]
+else:
+    _tab_labels += [
+        "Cleanup Review",
+        "Reconcile",
+        "Data out",
+        "Pipeline Efficiency Tracking",
+        "Dashboard",
+        "Investigate",
+    ]
 
 _tabs = st.tabs(_tab_labels)
 _ti = 0
@@ -656,7 +778,12 @@ _ti = 0
 if _PIPELINE_ENABLED:
     tab_pipeline = _tabs[_ti]; _ti += 1
 tab_editor = _tabs[_ti]; _ti += 1
-tab_reconcile = _tabs[_ti]; _ti += 1
+if _SCRIPTRAG_DEMO_LAYOUT:
+    tab_data_out = _tabs[_ti]; _ti += 1
+    tab_reconcile = _tabs[_ti]; _ti += 1
+else:
+    tab_reconcile = _tabs[_ti]; _ti += 1
+    tab_data_out = _tabs[_ti]; _ti += 1
 tab_efficiency = _tabs[_ti]; _ti += 1
 tab_dashboard = _tabs[_ti]; _ti += 1
 tab_investigate = _tabs[_ti]; _ti += 1
@@ -949,6 +1076,11 @@ with tab_editor:
         "**Corrections:** what broke, in plain English, plus a compact before/after summary (not raw JSON). "
         "**Warnings:** where in the extracted graph the flag applies — approve (acknowledged) or decline (false positive)."
     )
+    st.info(
+        "**Human-in-the-loop gate.** Per-scene **self-healing** (validate → fix → optional LLM audit) already ran in "
+        "**Pipeline**. Here you decide which warnings are real, then **Approve & load to Neo4j** commits the graph — "
+        "the manipulable dataset downstream tools consume. Next: optional **Reconcile**, then **Data out** for exports."
+    )
 
     pr = st.session_state.get("pipeline_results")
     if not pr:
@@ -1105,8 +1237,9 @@ with tab_editor:
 with tab_reconcile:
     st.header("Reconcile")
     st.caption(
-        "Scan Neo4j for fuzzy duplicate **Character** / **Location** names and **ghost** characters "
-        "(single scene, no conflicts). Merges **rewrite the graph** — use **dry-run** on the CLI when unsure."
+        "**Optional — post-load entity hygiene.** Scan Neo4j for fuzzy duplicate **Character** / **Location** "
+        "names and **ghost** characters (single scene, no conflicts). Merges **rewrite the graph** — use "
+        "**dry-run** on the CLI when unsure."
     )
     with st.expander("About reconciliation", expanded=False):
         st.markdown(
@@ -1245,14 +1378,115 @@ with tab_reconcile:
 
 
 # ===================================================================
+# TAB: Data out
+# ===================================================================
+
+with tab_data_out:
+    st.header("Data out")
+    st.caption(
+        "After **Cleanup Review** (HITL) and **Approve & Load**, the screenplay lives as **structured graph data** "
+        "in Neo4j. Use this tab to **inspect the schema**, run **recipe Cypher** (read-only), and **download CSV** "
+        "for spreadsheets, warehouses, or demos."
+    )
+    st.markdown(graph_schema_card_markdown())
+
+    _stamp_out = _neo4j_dashboard_cache_stamp()
+    _lc = _cached_label_counts(_stamp_out)
+    _rc = _cached_rel_type_counts(_stamp_out)
+    if not _lc and not _rc:
+        st.info(
+            "No graph statistics yet — connect Neo4j, load from **Cleanup Review**, or check credentials. "
+            "Counts refresh with the same cache as the Dashboard (**Reload metrics** in the sidebar)."
+        )
+    else:
+        c1, c2 = st.columns(2)
+        with c1:
+            st.subheader("Node labels (live)")
+            st.dataframe(
+                pd.DataFrame(_lc) if _lc else pd.DataFrame(columns=["label", "cnt"]),
+                use_container_width=True,
+                hide_index=True,
+            )
+        with c2:
+            st.subheader("Relationship types (live)")
+            st.dataframe(
+                pd.DataFrame(_rc) if _rc else pd.DataFrame(columns=["rel_type", "cnt"]),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+    st.subheader("Recipe queries")
+    st.caption("Fixed, parameterized Cypher — proof that the graph is queryable without the chat layer.")
+    _dq_labels = {s["key"]: s["title"] for s in DEMO_QUERY_SPECS}
+    _dq_desc = {s["key"]: s["description"] for s in DEMO_QUERY_SPECS}
+    _dq_pick = st.selectbox(
+        "Query",
+        [s["key"] for s in DEMO_QUERY_SPECS],
+        format_func=lambda k: _dq_labels[k],
+        key="data_out_demo_query",
+    )
+    st.caption(_dq_desc.get(_dq_pick, ""))
+    _dq_rows = _cached_demo_query(_stamp_out, _dq_pick)
+    if not _dq_rows:
+        st.warning("Query returned no rows or Neo4j is unreachable.")
+    else:
+        st.dataframe(pd.DataFrame(_dq_rows), use_container_width=True, hide_index=True)
+
+    st.subheader("CSV downloads")
+    _edge_limit = st.number_input(
+        "Max rows for narrative edges export",
+        min_value=100,
+        max_value=50_000,
+        value=5_000,
+        step=100,
+        key="data_out_edge_limit",
+        help="Caps edge rows for browser download; raise for full scripts if needed.",
+    )
+    _edges = _cached_export_edges(_stamp_out, int(_edge_limit))
+    _chars = _cached_export_characters(_stamp_out)
+    _evs = _cached_export_events(_stamp_out)
+
+    ec1, ec2, ec3 = st.columns(3)
+    with ec1:
+        st.download_button(
+            "narrative_edges.csv",
+            data=pd.DataFrame(_edges).to_csv(index=False).encode("utf-8"),
+            file_name="scriptrag_narrative_edges.csv",
+            mime="text/csv",
+            disabled=not _edges,
+            key="dl_edges",
+        )
+    with ec2:
+        st.download_button(
+            "characters.csv",
+            data=pd.DataFrame(_chars).to_csv(index=False).encode("utf-8"),
+            file_name="scriptrag_characters.csv",
+            mime="text/csv",
+            disabled=not _chars,
+            key="dl_chars",
+        )
+    with ec3:
+        st.download_button(
+            "events.csv",
+            data=pd.DataFrame(_evs).to_csv(index=False).encode("utf-8"),
+            file_name="scriptrag_events.csv",
+            mime="text/csv",
+            disabled=not _evs,
+            key="dl_events",
+        )
+    if not _chars and not _evs and not _edges:
+        st.caption("Load a graph to enable downloads.")
+
+
+# ===================================================================
 # TAB: Pipeline Efficiency Tracking
 # ===================================================================
 
 with tab_efficiency:
     st.header("Pipeline Efficiency Tracking")
     st.caption(
-        "Each completed pipeline run is stored as a **:PipelineRun** node in Neo4j (not wiped when you load a screenplay). "
-        "**Telemetry** columns mirror in-process Anthropic usage from the app. "
+        "**Agentic pipeline observability:** each finished run is a **:PipelineRun** row in Neo4j (survives screenplay reloads). "
+        "Use it like production extractor metrics — **tokens**, **estimated cost**, correction/warning counts, scenes processed. "
         f"Bump **`AGENT_OPTIMIZATION_VERSION`** in `app.py` when you ship pipeline improvements (current: **{AGENT_OPTIMIZATION_VERSION}**)."
     )
     try:
@@ -1356,7 +1590,14 @@ with tab_dashboard:
 
 with tab_investigate:
     st.header("Investigate")
-    st.caption("Ask questions about the script's structure. Answers come from your Neo4j graph.")
+    _inv_cap = (
+        "Ask questions about the script's structure. Answers come from your Neo4j graph."
+    )
+    if _SCRIPTRAG_DEMO_LAYOUT:
+        _inv_cap += (
+            " For demos, prefer **Data out** (recipe Cypher + CSV) first — this tab is **optional NL exploration**."
+        )
+    st.caption(_inv_cap)
 
     if "messages" not in st.session_state:
         st.session_state.messages = []

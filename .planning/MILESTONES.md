@@ -14,6 +14,17 @@
 
 ---
 
-## v1.1 — Quality, tests & open-source hygiene (active)
+## v1.1 — Quality, tests & open-source hygiene (parallel)
 
-See `.planning/PROJECT.md` (**Current Milestone**), `.planning/REQUIREMENTS.md`, and `.planning/ROADMAP.md` (Phases 5+).
+See `.planning/REQUIREMENTS.md` (QA/DOC/PERF) and `.planning/ROADMAP.md` (Phases 5–7).
+
+---
+
+## v1.2 — Demo & data-out flow (complete)
+
+**Completed:** 2026-04-03  
+**Phases:** 8–10
+
+**Shipped:** **OUT-01** (**Data out** tab, `data_out.py`); **FLOW-01** (Cleanup HITL + Efficiency observability copy); **DEMO-01** (`SCRIPTRAG_DEMO_LAYOUT`).
+
+See `.planning/ROADMAP.md` (**Milestone v1.2**), phase dirs `08-data-out-demo-flow/`, `09-hitl-observability-copy/`, `10-demo-layout-flag/`.

@@ -10,15 +10,17 @@
 
 End-to-end, **evidence-backed** structural analysis of a screenplay in a queryable graph—with a working pipeline from upload → validated extraction → Neo4j → metrics and investigation.
 
-## Current Milestone: v1.1 — Quality, tests & open-source hygiene
+## Current milestones
 
-**Goal:** Add **automated tests** for critical `metrics` / `reconcile` surfaces, ship an explicit **LICENSE** and aligned README legal copy, and clear **fuzzy matching** dependency warnings for operators.
+### v1.2 — Demo & data-out flow (execution focus)
 
-**Target features:**
+**Goal:** Linear story for technical demos: **self-healing extraction → HITL → manipulable graph data** (schema, recipe SQL/Cypher, CSV), with analytics tabs as follow-ons.
 
-- Pytest coverage with **mocked Neo4j** for structural load and reconcile scan paths (REQ **QA-01**, **QA-02**).
-- Root **LICENSE** + README license section (**DOC-01**).
-- Optional **`python-Levenshtein`** (or equivalent) to satisfy `fuzzywuzzy` performance path + docs (**PERF-01**).
+**Target features:** **OUT-01** (Data out tab + `data_out.py`), **FLOW-01** (Cleanup + Efficiency narrative), **DEMO-01** (optional demo tab layout). See `.planning/ROADMAP.md` Phases 8–10.
+
+### v1.1 — Quality, tests & open-source hygiene (parallel)
+
+**Goal:** Pytest for `metrics` / `reconcile` (**QA-01**, **QA-02**), **LICENSE** (**DOC-01**), **Levenshtein** polish (**PERF-01**).
 
 ## Requirements
 
@@ -36,10 +38,14 @@ End-to-end, **evidence-backed** structural analysis of a screenplay in a queryab
 - ✓ **Empty / partial graph hardening (REL-01)** — explicit empty states and safe metric paths when Neo4j is missing or incomplete (Phase 2, 2026-04-03).
 - ✓ **Reconciliation for operators (REC-01)** — `reconcile.py` CLI + Streamlit tab; documented merge semantics (Phase 3, 2026-04-03).
 - ✓ **Structural load / production signal (MET-01)** — `get_structural_load_snapshot`, Dashboard + CLI (Phase 4, 2026-04-04).
+- ✓ **Data out / manipulable sink (OUT-01)** — `data_out.py`, **Data out** tab: schema card, recipe Cypher, CSV exports (v1.2 Phase 8, 2026-04-03).
+- ✓ **HITL + observability copy (FLOW-01)** — Cleanup Review HITL banner; Efficiency observability caption (v1.2 Phase 9, 2026-04-03).
+- ✓ **Demo layout flag (DEMO-01)** — `SCRIPTRAG_DEMO_LAYOUT` tab order + copy (v1.2 Phase 10, 2026-04-03).
 
 ### Active
 
-- [ ] **QA-01 / QA-02** — Unit tests for structural load and reconcile scan (mocked driver); see `.planning/REQUIREMENTS.md`.
+- (v1.2 Phases 8–10 complete — see **v1.1** for QA/LICENSE/Levenshtein.)
+- [ ] **QA-01 / QA-02** — Unit tests for structural load and reconcile scan (mocked driver); see `.planning/REQUIREMENTS.md` v1.1.
 - [ ] **DOC-01** — LICENSE + README license alignment.
 - [ ] **PERF-01** — Optional Levenshtein acceleration for fuzzy reconcile; document in README.
 
@@ -92,4 +98,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-03 — new milestone v1.1 started (`/gsd-new-milestone`); v1.0 archived in `.planning/MILESTONES.md`.*
+*Last updated: 2026-04-03 — v1.2 demo/data-out roadmap added; Phase 8 (`data_out.py`, **Data out** tab) started.*

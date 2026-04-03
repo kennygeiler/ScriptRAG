@@ -1,6 +1,28 @@
 # Roadmap: ScriptRAG
 
-## Milestone v1.1 (active) — Quality, tests & open-source hygiene
+## Milestone v1.2 (active) — Demo & data-out flow
+
+**Goal:** Optimize the **agentic pipeline story** for technical demos: self-heal → HITL → **visible manipulable data** (schema, recipe queries, exports) → analytics/ops tabs as secondary.
+
+**Execution order:** 8 → 9 → 10 (parallel with v1.1 Phases 5–7 as bandwidth allows).
+
+### Phases
+
+- [x] **Phase 8: Data out surface** — **OUT-01**: **Data out** tab (`data_out.py` + `app.py`): live label/rel counts, fixed recipe Cypher, CSV downloads (narrative edges, characters, events); Reconcile caption = optional post-load hygiene. Plans: `08-01-PLAN.md` — summary `08-01-SUMMARY.md`.
+- [x] **Phase 9: HITL & observability copy** — **FLOW-01**: Cleanup HITL banner; Efficiency **agentic observability** caption. Plan `09-01-PLAN.md` — summary `09-01-SUMMARY.md`.
+- [x] **Phase 10: Demo layout (optional)** — **DEMO-01**: `SCRIPTRAG_DEMO_LAYOUT` reorders tabs (Cleanup → Data out → Reconcile…); sidebar + Investigate copy. Plan `10-01-PLAN.md` — summary `10-01-SUMMARY.md`.
+
+### Progress (v1.2)
+
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 8. Data out surface | 1/1 | Complete | 2026-04-03 |
+| 9. HITL & observability copy | 1/1 | Complete | 2026-04-03 |
+| 10. Demo layout (optional) | 1/1 | Complete | 2026-04-03 |
+
+---
+
+## Milestone v1.1 (parallel) — Quality, tests & open-source hygiene
 
 **Goal:** Lock in **regression safety** for `metrics` / `reconcile` with pytest + mocks, make the repo **license-clear** for publication, and remove **fuzzywuzzy** speed warnings via an optional native Levenshtein dependency.
 
