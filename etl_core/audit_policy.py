@@ -6,7 +6,7 @@ P0: logging + gates only. P1+: auto-apply when all gates pass.
 from __future__ import annotations
 
 # Minimum model-reported confidence [0, 1] to consider auto-apply (P1+).
-AUTO_APPLY_MIN_CONFIDENCE = 0.85
+AUTO_APPLY_MIN_CONFIDENCE = 0.6
 
 # Auditor `check` values allowed for unattended graph edits.
 AUTO_APPLY_CHECKS_PHASE1: frozenset[str] = frozenset({"quote_fidelity", "attribution"})

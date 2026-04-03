@@ -112,11 +112,11 @@ Rules:
 - Only report issues; an empty findings list means everything is correct.
 
 **Structured remediation (optional):** Set mapping_decision and patch fields only when you are \
-≥0.85 confident the fix is correct:
+≥0.6 confident the fix is correct (pipeline auto-applies gated patches at that threshold):
 - **propose_retype**: wrong type but quote/entities ok — set patch_relationship_index, patch_new_type \
 (one of INTERACTS_WITH, LOCATED_IN, USES, CONFLICTS_WITH, POSSESSES).
 - **propose_remove**: relationship is bogus / unsupported — patch_relationship_index only.
-Otherwise use mapping_decision="defer_human" and confidence ≤0.84.
+Otherwise use mapping_decision="defer_human" and keep confidence below 0.6 for narrative-only notes.
 """
 
 _COMPLETENESS_SYSTEM = """\
@@ -141,7 +141,7 @@ Rules:
 - In **detail** and **suggestion**, name real lexicon **source_id** / **target_id** \
   from the graph when possible, and cite the exact relationship type from the list above.
 - Default mapping_decision="defer_human" — pipeline may only auto-add when you set \
-**propose_add** with confidence ≥0.85, **patch_source_id**, **patch_target_id**, \
+**propose_add** with confidence ≥0.6, **patch_source_id**, **patch_target_id**, \
 **patch_relationship_type**, and **patch_source_quote** as a verbatim substring of the scene text, \
 and both ids exist as nodes in the graph.
 - Only report genuinely missing items; an empty findings list means extraction is complete.
@@ -166,7 +166,7 @@ Rules:
 - If attribution is ambiguous but plausible, or direction of action is arguable, use severity="warning".
 - Only report issues; an empty findings list means attribution is correct.
 
-**Structured remediation (optional)** when ≥0.85 confident:
+**Structured remediation (optional)** when ≥0.6 confident:
 - **propose_swap**: swap source_id and target_id for that edge — set patch_relationship_index.
 - **propose_retype** / **propose_remove**: same as quote fidelity rules.
 Otherwise defer_human.

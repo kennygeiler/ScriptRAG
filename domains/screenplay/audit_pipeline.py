@@ -38,18 +38,23 @@ def _hitl_warning_from_finding(finding: dict[str, Any], doc_id: Any, finding_ind
     return w
 
 
-def _allowed_auto_mapping(check: str, md: str) -> bool:
+def _allowed_auto_mapping(check: str, md_norm: str) -> bool:
     if not ap.AUTO_APPLY_ENABLED:
         return False
-    if check == "completeness" and md == "propose_add":
+    if check == "completeness" and md_norm == "propose_add":
         return ap.AUTO_APPLY_COMPLETENESS_ADD
     if check not in ap.AUTO_APPLY_CHECKS_PHASE1:
         return False
-    if check == "quote_fidelity" and md in ("propose_retype", "propose_remove"):
+    if check == "quote_fidelity" and md_norm in ("propose_retype", "propose_remove"):
         return True
-    if check == "attribution" and md in ("propose_swap", "propose_retype", "propose_remove"):
+    if check == "attribution" and md_norm in ("propose_swap", "propose_retype", "propose_remove"):
         return True
     return False
+
+
+def _is_informational_only(mapping_decision_norm: str) -> bool:
+    """No structured graph edit — show in audit trail only, not Audit & Verify."""
+    return mapping_decision_norm in ("defer_human", "none", "")
 
 
 def process_semantic_audit(
@@ -71,7 +76,9 @@ def process_semantic_audit(
 
     for i, finding in enumerate(findings):
         check = str(finding.get("check") or "")
-        md = str(finding.get("mapping_decision") or "defer_human")
+        _md_raw = finding.get("mapping_decision")
+        md_display = str(_md_raw if _md_raw is not None else "defer_human")
+        md_norm = md_display.strip().lower()
         try:
             conf = float(finding.get("confidence", 0.0) or 0.0)
         except (TypeError, ValueError):
@@ -85,7 +92,7 @@ def process_semantic_audit(
         gate_risk, gate_notes = gates_for_finding(g, raw_text, lexicon_ids, finding)
         merged_risk = list(dict.fromkeys([*risk_from_model, *gate_risk]))
 
-        try_auto = _allowed_auto_mapping(check, md)
+        try_auto = _allowed_auto_mapping(check, md_norm)
         if try_auto:
             if conf < ap.AUTO_APPLY_MIN_CONFIDENCE:
                 try_auto = False
@@ -94,7 +101,6 @@ def process_semantic_audit(
             elif any(rf in ap.RISK_FLAGS_BLOCK_AUTO for rf in risk_from_model):
                 try_auto = False
 
-        action = "deferred_hitl"
         applied = False
         graph_before = deepcopy(g)
 
@@ -109,7 +115,6 @@ def process_semantic_audit(
                 if ok:
                     g = new_g
                     applied = True
-                    action = "auto_applied"
                     heal.append({
                         "ts": _ts(),
                         "doc_id": doc_id,
@@ -117,7 +122,7 @@ def process_semantic_audit(
                         "detail": "semantic_patch_applied",
                         "finding_index": i,
                         "check": check,
-                        "mapping_decision": md,
+                        "mapping_decision": md_display,
                         "confidence": conf,
                         "before": graph_before,
                         "after": deepcopy(g),
@@ -127,7 +132,12 @@ def process_semantic_audit(
                     merged_risk.append("pydantic_or_rules_failed_after_apply")
                     gate_notes.extend(val_errs[:5])
 
-        if not applied:
+        if applied:
+            action = "auto_applied"
+        elif _is_informational_only(md_norm):
+            # No structured edit: audit node + decisions JSONL only (not Verify / warning count).
+            action = "info_only"
+        else:
             action = "deferred_hitl"
             hitl.append(_hitl_warning_from_finding(finding, doc_id, i))
 
@@ -136,7 +146,7 @@ def process_semantic_audit(
             "doc_id": doc_id,
             "finding_index": i,
             "check": check,
-            "mapping_decision": md,
+            "mapping_decision": md_display,
             "confidence": conf,
             "risk_flags": merged_risk,
             "gate_errors": gate_notes,
