@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import traceback
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -733,67 +734,87 @@ if _PIPELINE_ENABLED and _active == "Pipeline":
                         cum_ext_cost = cum_fix_cost = cum_aud_cost = 0.0
                         failed_count = 0
                         done_count = 0
+                        _pipeline_exc: BaseException | None = None
 
-                        for result in extract_scenes(
-                            raw_scenes,
-                            system_prompt,
-                            lexicon_ids=lexicon_ids,
-                            enable_audit=True,
-                        ):
-                            done_count += 1
-                            frac = 0.10 + 0.85 * (result.index / total)
-                            status_icon = {
-                                "skip": "⏭️", "empty": "⬜", "ok": "✅",
-                                "fixed": "🔧", "failed": "❌",
-                            }.get(result.status, "?")
+                        try:
+                            for result in extract_scenes(
+                                raw_scenes,
+                                system_prompt,
+                                lexicon_ids=lexicon_ids,
+                                enable_audit=True,
+                            ):
+                                done_count += 1
+                                frac = 0.10 + 0.85 * (result.index / total)
+                                status_icon = {
+                                    "skip": "⏭️", "empty": "⬜", "ok": "✅",
+                                    "fixed": "🔧", "failed": "❌",
+                                }.get(result.status, "?")
+                                progress.progress(
+                                    frac,
+                                    text=f"Scene {result.index}/{total} — {result.status}",
+                                )
+                                pipe_status.update(
+                                    label=f"Stage 3 — Extracted {done_count}/{total} scenes…",
+                                    state="running",
+                                )
+                                msg = (
+                                    f"{status_icon} Scene **{result.scene_number}** "
+                                    f"({result.heading or 'untitled'}) — {result.status}"
+                                )
+                                if result.status == "failed" and result.error:
+                                    msg += f"\n\n`{result.error}`"
+                                scene_log.write(msg)
+
+                                if result.graph_entry:
+                                    all_entries.append(result.graph_entry)
+                                all_audit.extend(result.audit_entries)
+                                cum_tokens += result.tokens
+                                cum_cost += result.cost
+                                cum_ext_tok += result.extract_tokens
+                                cum_ext_cost += result.extract_cost
+                                cum_fix_tok += result.fix_tokens
+                                cum_fix_cost += result.fix_cost
+                                cum_aud_tok += result.audit_tokens
+                                cum_aud_cost += result.audit_cost
+                                if result.audit_decisions:
+                                    all_audit_decisions.extend(result.audit_decisions)
+
+                                if result.warnings:
+                                    for w in result.warnings:
+                                        w.setdefault("scene_number", result.scene_number)
+                                    all_warnings.extend(result.warnings)
+
+                                if result.status == "failed":
+                                    failed_count += 1
+                                if result.status == "fixed":
+                                    corrections.append({
+                                        "scene_number": result.scene_number,
+                                        "heading": result.heading,
+                                        "audit_entries": result.audit_entries,
+                                    })
+                        except BaseException as exc:
+                            _pipeline_exc = exc
+                            _log.exception("Pipeline Stage 3 aborted")
+                            scene_log.write(f"\n\n**Stopped:** `{type(exc).__name__}: {exc}`")
+                            pipe_status.update(label="Pipeline stopped unexpectedly", state="error")
                             progress.progress(
-                                frac,
-                                text=f"Scene {result.index}/{total} — {result.status}",
+                                min(0.99, 0.10 + 0.85 * (done_count / max(total, 1))),
+                                text=f"Failed after scene {done_count}/{total}",
                             )
-                            pipe_status.update(
-                                label=f"Stage 3 — Extracted {done_count}/{total} scenes…",
-                                state="running",
+                            st.error(
+                                "**Pipeline run was interrupted.** Common causes on hosted apps: "
+                                "browser tab backgrounded or disconnected, platform memory limit, "
+                                "or an unexpected error (details below). Leave this tab focused and "
+                                "check host logs for OOM or worker restarts."
                             )
-                            msg = (
-                                f"{status_icon} Scene **{result.scene_number}** "
-                                f"({result.heading or 'untitled'}) — {result.status}"
-                            )
-                            if result.status == "failed" and result.error:
-                                msg += f"\n\n`{result.error}`"
-                            scene_log.write(msg)
+                            with st.expander("Error details (for logs / support)"):
+                                st.code(traceback.format_exc())
 
-                            if result.graph_entry:
-                                all_entries.append(result.graph_entry)
-                            all_audit.extend(result.audit_entries)
-                            cum_tokens += result.tokens
-                            cum_cost += result.cost
-                            cum_ext_tok += result.extract_tokens
-                            cum_ext_cost += result.extract_cost
-                            cum_fix_tok += result.fix_tokens
-                            cum_fix_cost += result.fix_cost
-                            cum_aud_tok += result.audit_tokens
-                            cum_aud_cost += result.audit_cost
-                            if result.audit_decisions:
-                                all_audit_decisions.extend(result.audit_decisions)
+                        if _pipeline_exc is None:
+                            progress.progress(1.0, text="Done")
+                            pipe_status.update(label="Pipeline complete", state="complete")
 
-                            if result.warnings:
-                                for w in result.warnings:
-                                    w.setdefault("scene_number", result.scene_number)
-                                all_warnings.extend(result.warnings)
-
-                            if result.status == "failed":
-                                failed_count += 1
-                            if result.status == "fixed":
-                                corrections.append({
-                                    "scene_number": result.scene_number,
-                                    "heading": result.heading,
-                                    "audit_entries": result.audit_entries,
-                                })
-
-                        progress.progress(1.0, text="Done")
-                        pipe_status.update(label="Pipeline complete", state="complete")
-
-                        st.session_state["pipeline_results"] = {
+                        _results_dict: dict[str, Any] = {
                             "entries": all_entries,
                             "audit_trail": all_audit,
                             "warnings": all_warnings,
@@ -811,6 +832,11 @@ if _PIPELINE_ENABLED and _active == "Pipeline":
                             "audit_tokens": int(cum_aud_tok or 0),
                             "audit_cost": float(cum_aud_cost or 0.0),
                         }
+                        if _pipeline_exc is not None:
+                            _results_dict["pipeline_error"] = f"{type(_pipeline_exc).__name__}: {_pipeline_exc}"
+                            _results_dict["partial"] = True
+
+                        st.session_state["pipeline_results"] = _results_dict
                         st.session_state.pop("verify_hitl_neo4j_load_at", None)
                         st.session_state.pop("verify_hitl_load_audit_payload", None)
                         if _up is not None:
@@ -820,27 +846,35 @@ if _PIPELINE_ENABLED and _active == "Pipeline":
                         ).strip()
                         if not _script_name and _TARGET_FDX.is_file():
                             _script_name = _TARGET_FDX.name
-                        _saved = _persist_pipeline_run(
-                            scenes_extracted=len(all_entries),
-                            total_scenes=total,
-                            corrections_count=len(corrections),
-                            warnings_count=len(all_warnings),
-                            telemetry_tokens=int(cum_tokens or 0),
-                            telemetry_cost_usd=float(cum_cost or 0.0),
-                            failed_scenes=failed_count,
-                            llm_auditors_enabled=True,
-                            fdx_filename=_script_name,
-                            extract_tokens=int(cum_ext_tok or 0),
-                            extract_cost_usd=float(cum_ext_cost or 0.0),
-                            fix_tokens=int(cum_fix_tok or 0),
-                            fix_cost_usd=float(cum_fix_cost or 0.0),
-                            audit_tokens=int(cum_aud_tok or 0),
-                            audit_cost_usd=float(cum_aud_cost or 0.0),
-                        )
-                        if not _saved:
+
+                        if _pipeline_exc is None and all_entries:
+                            _saved = _persist_pipeline_run(
+                                scenes_extracted=len(all_entries),
+                                total_scenes=total,
+                                corrections_count=len(corrections),
+                                warnings_count=len(all_warnings),
+                                telemetry_tokens=int(cum_tokens or 0),
+                                telemetry_cost_usd=float(cum_cost or 0.0),
+                                failed_scenes=failed_count,
+                                llm_auditors_enabled=True,
+                                fdx_filename=_script_name,
+                                extract_tokens=int(cum_ext_tok or 0),
+                                extract_cost_usd=float(cum_ext_cost or 0.0),
+                                fix_tokens=int(cum_fix_tok or 0),
+                                fix_cost_usd=float(cum_fix_cost or 0.0),
+                                audit_tokens=int(cum_aud_tok or 0),
+                                audit_cost_usd=float(cum_aud_cost or 0.0),
+                            )
+                            if not _saved:
+                                st.warning(
+                                    "Pipeline finished but **efficiency metrics were not saved** to Neo4j "
+                                    "(check connection, credentials, and that the DB allows new labels)."
+                                )
+                        elif _pipeline_exc is not None and all_entries:
                             st.warning(
-                                "Pipeline finished but **efficiency metrics were not saved** to Neo4j "
-                                "(check connection, credentials, and that the DB allows new labels)."
+                                f"**Partial results:** {len(all_entries)}/{total} scene(s) in memory — "
+                                "inspect metrics below; **Approve & load** only includes extracted scenes. "
+                                "No **:PipelineRun** row (run did not complete cleanly)."
                             )
 
         elif not _TARGET_FDX.is_file():
@@ -848,6 +882,11 @@ if _PIPELINE_ENABLED and _active == "Pipeline":
 
         _pr = st.session_state.get("pipeline_results")
         if _pr is not None:
+            if _pr.get("pipeline_error"):
+                st.error(
+                    f"**Last pipeline did not finish cleanly:** {_pr['pipeline_error']} "
+                    + ("(**Partial** results below.)" if _pr.get("partial") else "")
+                )
             c1, c2, c3, c4, c5 = st.columns(5)
             with c1:
                 st.metric("Scenes extracted", f"{_pr['extracted']}/{_pr['total_scenes']}")
