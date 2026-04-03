@@ -7,6 +7,7 @@ Three specialized agents run after deterministic checks pass:
 3. **Attribution** — are source_id/target_id correct for the described action?
 
 Each auditor returns structured ``AuditFinding`` items via ``instructor``.
+Optional **mapping_decision** + **patch_*** fields support gated auto-apply (see ``audit_pipeline``).
 """
 
 from __future__ import annotations
@@ -21,6 +22,24 @@ from pydantic import BaseModel, Field
 # Response models
 # ---------------------------------------------------------------------------
 
+MappingDecision = Literal[
+    "defer_human",
+    "none",
+    "propose_retype",
+    "propose_remove",
+    "propose_swap",
+    "propose_add",
+]
+
+AllowedRelType = Literal[
+    "INTERACTS_WITH",
+    "LOCATED_IN",
+    "USES",
+    "CONFLICTS_WITH",
+    "POSSESSES",
+]
+
+
 class AuditFinding(BaseModel):
     check: Literal["quote_fidelity", "completeness", "attribution"]
     severity: Literal["error", "warning"]
@@ -30,6 +49,40 @@ class AuditFinding(BaseModel):
     detail: str = Field(description="Human-readable explanation of the finding.")
     suggestion: str | None = Field(
         default=None, description="Recommended fix, if any."
+    )
+
+    confidence: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="Your estimated confidence [0,1] that the patch (if any) is correct.",
+    )
+    mapping_decision: MappingDecision = Field(
+        default="defer_human",
+        description=(
+            "How to act: defer_human = needs human Verify only; "
+            "propose_retype/remove/swap/add = structured patch (may auto-apply when gated)."
+        ),
+    )
+    risk_flags: list[str] = Field(
+        default_factory=list,
+        description='Strings like "ambiguous_quote" when unsure; blocks auto-apply.',
+    )
+
+    patch_relationship_index: int | None = Field(
+        default=None,
+        description="For retype/remove/swap: index in relationships list.",
+    )
+    patch_new_type: AllowedRelType | None = Field(
+        default=None, description="For propose_retype: new relationship type."
+    )
+    patch_source_id: str | None = Field(default=None, description="For propose_add: source node id.")
+    patch_target_id: str | None = Field(default=None, description="For propose_add: target node id.")
+    patch_relationship_type: AllowedRelType | None = Field(
+        default=None, description="For propose_add: edge type."
+    )
+    patch_source_quote: str | None = Field(
+        default=None, description="For propose_add: verbatim quote substring from scene text.",
     )
 
 
@@ -57,6 +110,13 @@ Rules:
 - If the quote is present but the **relationship type** is debatable (e.g. INTERACTS_WITH vs directional edge, mild POSSESSES vs wearing), use severity="warning" — humans resolve in Verify.
 - If the quote clearly supports the type, do NOT report it.
 - Only report issues; an empty findings list means everything is correct.
+
+**Structured remediation (optional):** Set mapping_decision and patch fields only when you are \
+≥0.85 confident the fix is correct:
+- **propose_retype**: wrong type but quote/entities ok — set patch_relationship_index, patch_new_type \
+(one of INTERACTS_WITH, LOCATED_IN, USES, CONFLICTS_WITH, POSSESSES).
+- **propose_remove**: relationship is bogus / unsupported — patch_relationship_index only.
+Otherwise use mapping_decision="defer_human" and confidence ≤0.84.
 """
 
 _COMPLETENESS_SYSTEM = """\
@@ -80,8 +140,10 @@ Rules:
 - Ignore trivial background details that are not plot-relevant.
 - In **detail** and **suggestion**, name real lexicon **source_id** / **target_id** \
   from the graph when possible, and cite the exact relationship type from the list above.
-- For each missing relationship, report severity="warning". The pipeline does **not** \
-  auto-add edges; a human must add them in JSON with a verbatim **source_quote**.
+- Default mapping_decision="defer_human" — pipeline may only auto-add when you set \
+**propose_add** with confidence ≥0.85, **patch_source_id**, **patch_target_id**, \
+**patch_relationship_type**, and **patch_source_quote** as a verbatim substring of the scene text, \
+and both ids exist as nodes in the graph.
 - Only report genuinely missing items; an empty findings list means extraction is complete.
 """
 
@@ -103,6 +165,11 @@ Rules:
 - Use severity="error" only when the quote clearly names or implies different actors than source_id/target_id (e.g. swapped roles, wrong character id).
 - If attribution is ambiguous but plausible, or direction of action is arguable, use severity="warning".
 - Only report issues; an empty findings list means attribution is correct.
+
+**Structured remediation (optional)** when ≥0.85 confident:
+- **propose_swap**: swap source_id and target_id for that edge — set patch_relationship_index.
+- **propose_retype** / **propose_remove**: same as quote fidelity rules.
+Otherwise defer_human.
 """
 
 

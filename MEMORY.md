@@ -4,7 +4,7 @@
 
 ## What this is
 
-**ScriptRAG**: `.fdx` → JSON → **Neo4j** (`Character`, `Location`, `Prop`, `Event` + `IN_SCENE` + narrative rels with `source_quote`). **Streamlit** app = upload screenplay → self-healing extraction (**Pipeline** shows corrections) → **Verify** (warnings + load) → optional **Reconcile** → **Data out** (recipe Cypher + CSV) and **Pipeline Efficiency Tracking**. Each pipeline run writes a **:PipelineRun** node (efficiency metrics; in-app telemetry tokens/cost). **Bundled scripts:** `samples/` (Cinema Four full + Ludwig micro-sample, each `.fdx` + companion `.pdf`); root **README** has a **demo walkthrough**.
+**ScriptRAG**: `.fdx` → JSON → **Neo4j** (`Character`, `Location`, `Prop`, `Event` + `IN_SCENE` + narrative rels with `source_quote`). **Streamlit** app = upload screenplay → self-healing extraction (**Pipeline**: chunked run, cancel between scenes, corrections include **fixer** + **auditor_auto_apply**) → **Audit & Verify** (HITL warnings + load) → optional **Reconcile** → **Data out** (recipe Cypher + CSV) and **Pipeline Efficiency Tracking**. Each pipeline run writes a **:PipelineRun** node (efficiency metrics; in-app telemetry tokens/cost). Semantic audit may **auto-apply** gated patches; decisions log to **`audit_decisions.jsonl`** (gitignored). **Bundled scripts:** `samples/` (Cinema Four full + Ludwig micro-sample, each `.fdx` + companion `.pdf`); root **README** has a **demo walkthrough**.
 
 ## App sections (`app.py`)
 
@@ -12,13 +12,13 @@ Navigation is a **horizontal radio** (`scriptrag_section`), not `st.tabs`, so in
 
 | Section | Purpose |
 |---------|---------|
-| **Pipeline** | Upload FDX, run full extraction in-process (parse → lexicon → per-scene LangGraph); live progress; persists **:PipelineRun** to Neo4j after each run |
-| **Verify** | **Filter/sort/bulk** duplicates; **preview** + **evidence**; optional **notes**; **Decision log** CSV/JSON + **last-load** snapshot; **Approve & Load** → Neo4j. **Corrections** under **Pipeline** |
+| **Pipeline** | Upload FDX → parse/lexicon → **one scene per rerun** (cancel ok); pinned to this section while running; **:PipelineRun** on complete or partial; audit **decisions** table when present; corrections = fixer + **auditor_auto_apply** |
+| **Audit & Verify** | **Filter/sort/bulk** duplicates; **preview** + **evidence**; optional **notes**; **Decision log** CSV/JSON + **last-load** snapshot; **Approve & Load** → Neo4j (HITL warnings only; auto-applied audit edits already in graph JSON) |
 | **Reconcile** | Optional post-load hygiene: ghost characters + fuzzy **Character** / **Location** name pairs (`reconcile.py`); optional merge with checkbox + pair picker (APOC or manual rewire) |
 | **Data out** | Schema card, live Neo4j label/rel counts, fixed recipe Cypher (`data_out.py`), CSV downloads (narrative edges, characters, events) |
 | **Pipeline Efficiency Tracking** | Table of **:PipelineRun** rows: telemetry tokens/cost, corrections/warnings counts, agent opt. version |
 
-**Pipeline** hidden when `DISABLE_PIPELINE=1` (read-only deployments). **`SCRIPTRAG_DEMO_LAYOUT=1`** reorders **Verify → Data out → Reconcile → …** (default is **Verify → Reconcile → Data out → …**).
+**Pipeline** hidden when `DISABLE_PIPELINE=1` (read-only deployments). **`SCRIPTRAG_DEMO_LAYOUT=1`** reorders **Audit & Verify → Data out → Reconcile → …** (default is **Audit & Verify → Reconcile → Data out → …**).
 
 **Resilience (REL-01):** Cached Neo4j reads for **Reconcile** / **Data out** log failures and return empty shapes.
 
@@ -47,9 +47,9 @@ Neo4j QA exports and related helpers live under **`tools/`** (`tools/README.md`)
 
 ## Architecture: engine vs domain
 
-Generic ETL engine lives in `etl_core/` (LangGraph state machine, telemetry, cost tracking). Screenplay-specific models and rules live in `domains/screenplay/`. The engine accepts a pluggable `DomainBundle` so it can be reused for other domains without touching core logic. **Optional LLM auditors** run one pass after validate; all findings go to **Verify** as warnings (no `audit_fixer` / no semantic auto-repair loop).
+Generic ETL engine lives in `etl_core/` (LangGraph state machine, telemetry, cost tracking, optional **`audit_post_process`**). Screenplay wiring: **`domains/screenplay/adapter.py`**, **`audit_pipeline.py`** (`process_semantic_audit`), **`audit_patch.py`**, **`audit_policy.py`**, **`auditors.py`**. **Optional LLM auditors** run one pass after validate; gated **auto-apply** mutates the graph and **`audit_trail`**; remaining findings are **warnings** for **Audit & Verify**. No **`audit_fixer`** LLM loop.
 
-The `ingest.py` module exposes `extract_scenes()` — a generator that yields per-scene results, consumed by both the CLI (`main()`) and the Streamlit Pipeline tab.
+The `ingest.py` module exposes **`extract_scenes()`** and **`run_single_scene_extraction()`** — used by CLI (`main()`) and Streamlit (**chunked** pipeline).
 
 ## Pipeline order (cold start)
 

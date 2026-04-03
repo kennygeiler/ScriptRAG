@@ -44,15 +44,23 @@ def run_extraction_pipeline(
     *,
     lexicon_ids: set[str] | None = None,
     enable_audit: bool = True,
-) -> tuple[SceneGraph | None, list[dict[str, Any]], str | None, dict[str, Any], list[dict[str, Any]]]:
+) -> tuple[
+    SceneGraph | None,
+    list[dict[str, Any]],
+    str | None,
+    dict[str, Any],
+    list[dict[str, Any]],
+    list[dict[str, Any]],
+]:
     """
     Run extract→validate→fix→(audit) via etl_core.
 
-    Returns ``(SceneGraph | None, audit_entries, error_msg | None, telemetry_dict, warnings)``.
+    Returns ``(SceneGraph | None, audit_entries, error_msg | None, telemetry_dict, warnings, audit_decisions)``.
     ``telemetry_dict`` has keys ``total_tokens`` and ``total_cost``.
     """
     bundle = get_bundle(lexicon_ids=lexicon_ids, enable_audit=enable_audit)
     empty_telem = {"total_tokens": 0, "total_cost": 0.0}
+    _lex_list = sorted(str(x) for x in (lexicon_ids or set()))
     try:
         state = run_pipeline(
             bundle,
@@ -60,14 +68,16 @@ def run_extraction_pipeline(
             system_prompt=system_prompt,
             doc_id=scene_number,
             compiled=_get_compiled(lexicon_ids, enable_audit=enable_audit),
+            lexicon_ids=_lex_list,
         )
     except MaxRetriesError as e:
-        return None, [], str(e), empty_telem, []
+        return None, [], str(e), empty_telem, [], []
     except Exception as e:
-        return None, [], f"{type(e).__name__}: {e}", empty_telem, []
+        return None, [], f"{type(e).__name__}: {e}", empty_telem, [], []
 
     audit = list(state.get("audit_trail") or [])
     warnings = list(state.get("warnings") or [])
+    decisions = list(state.get("audit_decisions") or [])
     gj = state.get("current_json")
     telem = {
         "total_tokens": int(state.get("total_tokens", 0) or 0),
@@ -75,9 +85,9 @@ def run_extraction_pipeline(
     }
 
     if not gj:
-        return None, audit, "empty current_json after pipeline", telem, warnings
+        return None, audit, "empty current_json after pipeline", telem, warnings, decisions
     try:
         sg = SceneGraph.model_validate(gj)
     except ValidationError as e:
-        return None, audit, str(e), telem, warnings
-    return sg, audit, None, telem, warnings
+        return None, audit, str(e), telem, warnings, decisions
+    return sg, audit, None, telem, warnings, decisions

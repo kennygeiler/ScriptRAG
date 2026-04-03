@@ -45,6 +45,13 @@ class DomainBundle:
     """Optional. (graph_json, raw_text, system_prompt) → (findings_list, usage_dict).
     Each finding: {check, severity, relationship_index, detail, suggestion}."""
 
+    audit_post_process: Callable[
+        [Any, dict[str, Any], str, frozenset[str], list[dict[str, Any]]],
+        tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]],
+    ] | None = None
+    """Optional. (doc_id, graph_json, raw_text, lexicon_ids, findings) →
+    (updated_graph, audit_decisions, hitl_warnings, self_heal_entries)."""
+
 
 def _ts() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -178,14 +185,35 @@ def _build_auditor(bundle: DomainBundle):
         errors = [f for f in findings if f.get("severity") == "error"]
         warns = [f for f in findings if f.get("severity") != "error"]
 
-        warnings.extend(warns)
-        # Never block the pipeline on semantic audit: promote model "error"
-        # findings to Verify warnings (same checks, no audit_fix LLM rounds).
+        normalized: list[dict[str, Any]] = []
+        for f in warns:
+            normalized.append(dict(f))
         for f in errors:
             w = dict(f)
             w["severity"] = "warning"
             w["verify_from_audit_error"] = True
-            warnings.append(w)
+            normalized.append(w)
+
+        gj = dict(state.get("current_json") or {})
+        lex_raw = state.get("lexicon_ids") or []
+        lex_f = frozenset(str(x) for x in lex_raw)
+        audit_decisions_acc = list(state.get("audit_decisions") or [])
+
+        post = bundle.audit_post_process
+        if post is not None and normalized:
+            gj2, decisions, hitl, heal = post(
+                state.get("doc_id"),
+                gj,
+                state.get("raw_text", ""),
+                lex_f,
+                normalized,
+            )
+            gj = gj2
+            audit.extend(heal)
+            audit_decisions_acc.extend(decisions)
+            warnings.extend(hitl)
+        else:
+            warnings.extend(normalized)
 
         audit.append({
             "ts": _ts(),
@@ -197,10 +225,20 @@ def _build_auditor(bundle: DomainBundle):
             "warning_count": len(warns),
             "findings": findings,
         })
+        if audit_decisions_acc:
+            audit.append({
+                "ts": _ts(),
+                "doc_id": state.get("doc_id"),
+                "node": "audit_interpret",
+                "detail": "semantic_audit_decisions",
+                "decisions_count": len(audit_decisions_acc),
+            })
 
         updates: dict[str, Any] = {
+            "current_json": gj,
             "audit_trail": audit,
             "warnings": warnings,
+            "audit_decisions": audit_decisions_acc,
             "last_error": None,
         }
         updates.update(accumulate_usage(state, **usage))
@@ -251,6 +289,7 @@ def run_pipeline(
     system_prompt: str,
     doc_id: str | int = "",
     compiled=None,
+    lexicon_ids: list[str] | None = None,
 ) -> ETLState:
     """
     Execute extract→validate→(fix→validate)*→audit (optional).
@@ -260,12 +299,15 @@ def run_pipeline(
     ``warnings`` for **Verify**.
     """
     app = compiled or build_graph(bundle)
+    _lex = [str(x) for x in (lexicon_ids or [])]
     state: ETLState = app.invoke({
         "raw_text": raw_text,
         "system_prompt": system_prompt,
         "doc_id": doc_id,
+        "lexicon_ids": _lex,
         "audit_trail": [],
         "warnings": [],
+        "audit_decisions": [],
         "retry_count": 0,
         "audit_retry_count": 0,
         "total_tokens": 0,

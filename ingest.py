@@ -44,6 +44,7 @@ class SceneResult:
     graph_entry: dict[str, Any] | None = None
     audit_entries: list[dict[str, Any]] = field(default_factory=list)
     warnings: list[dict[str, Any]] = field(default_factory=list)
+    audit_decisions: list[dict[str, Any]] = field(default_factory=list)
     tokens: int = 0
     cost: float = 0.0
     error: str | None = None
@@ -173,6 +174,81 @@ def _write_validated_output(path: Path, by_num: dict[int, dict[str, Any]], scene
     path.write_text(json.dumps(ordered, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
+def run_single_scene_extraction(
+    scenes: list[dict[str, Any]],
+    i: int,
+    system_prompt: str,
+    by_num: dict[int, dict[str, Any]],
+    *,
+    lexicon_ids: set[str] | None = None,
+    enable_audit: bool = True,
+) -> SceneResult:
+    """Run extraction for scene index *i* (1-based, same as ``enumerate(..., start=1)``).
+
+    Mutates *by_num* for skip cache, empty graphs, and successful extractions.
+    """
+    _ensure_clients()
+    total = len(scenes)
+    scene = scenes[i - 1]
+    sn = _scene_number_key(scene, i)
+    heading = scene.get("heading") or ""
+
+    if sn in by_num:
+        return SceneResult(
+            index=i, total=total, scene_number=sn, heading=heading,
+            status="skip", graph_entry=by_num[sn],
+        )
+
+    if not (scene.get("content") or "").strip():
+        entry = {
+            "scene_number": scene.get("number"),
+            "heading": heading,
+            "graph": SceneGraph().model_dump(mode="json"),
+        }
+        by_num[sn] = entry
+        return SceneResult(
+            index=i, total=total, scene_number=sn, heading=heading,
+            status="empty", graph_entry=entry,
+        )
+
+    user_text = format_scene_user_message(scene)
+    try:
+        graph, audit_entries, pipe_err, telem, pipe_warnings, audit_decisions = run_extraction_pipeline(
+            sn, user_text, system_prompt,
+            lexicon_ids=lexicon_ids,
+            enable_audit=enable_audit,
+        )
+        if pipe_err:
+            raise RuntimeError(pipe_err)
+    except Exception as exc:
+        return SceneResult(
+            index=i, total=total, scene_number=sn, heading=heading,
+            status="failed", audit_entries=[],
+            error=f"{type(exc).__name__}: {exc}",
+        )
+
+    had_fix = any(
+        e.get("node") in ("fixer", "auditor_auto_apply")
+        for e in audit_entries
+    )
+    entry = {
+        "scene_number": scene.get("number"),
+        "heading": heading,
+        "graph": graph.model_dump(mode="json"),
+    }
+    by_num[sn] = entry
+    return SceneResult(
+        index=i, total=total, scene_number=sn, heading=heading,
+        status="fixed" if had_fix else "ok",
+        graph_entry=entry,
+        audit_entries=audit_entries,
+        warnings=pipe_warnings,
+        audit_decisions=audit_decisions,
+        tokens=int(telem.get("total_tokens", 0) or 0),
+        cost=float(telem.get("total_cost", 0.0) or 0.0),
+    )
+
+
 def extract_scenes(
     scenes: list[dict[str, Any]],
     system_prompt: str,
@@ -187,66 +263,13 @@ def extract_scenes(
     Empty scenes are yielded as ``status="empty"``.  The caller decides what to
     do with each result (write to disk, update UI, etc.).
     """
-    _ensure_clients()
     by_num = dict(existing_by_num or {})
     total = len(scenes)
 
-    for i, scene in enumerate(scenes, start=1):
-        sn = _scene_number_key(scene, i)
-        heading = scene.get("heading") or ""
-
-        if sn in by_num:
-            yield SceneResult(
-                index=i, total=total, scene_number=sn, heading=heading,
-                status="skip", graph_entry=by_num[sn],
-            )
-            continue
-
-        if not (scene.get("content") or "").strip():
-            entry = {
-                "scene_number": scene.get("number"),
-                "heading": heading,
-                "graph": SceneGraph().model_dump(mode="json"),
-            }
-            by_num[sn] = entry
-            yield SceneResult(
-                index=i, total=total, scene_number=sn, heading=heading,
-                status="empty", graph_entry=entry,
-            )
-            continue
-
-        user_text = format_scene_user_message(scene)
-        try:
-            graph, audit_entries, pipe_err, telem, pipe_warnings = run_extraction_pipeline(
-                sn, user_text, system_prompt,
-                lexicon_ids=lexicon_ids,
-                enable_audit=enable_audit,
-            )
-            if pipe_err:
-                raise RuntimeError(pipe_err)
-        except Exception as exc:
-            yield SceneResult(
-                index=i, total=total, scene_number=sn, heading=heading,
-                status="failed", audit_entries=[],
-                error=f"{type(exc).__name__}: {exc}",
-            )
-            continue
-
-        had_fix = any(e.get("node") == "fixer" for e in audit_entries)
-        entry = {
-            "scene_number": scene.get("number"),
-            "heading": heading,
-            "graph": graph.model_dump(mode="json"),
-        }
-        by_num[sn] = entry
-        yield SceneResult(
-            index=i, total=total, scene_number=sn, heading=heading,
-            status="fixed" if had_fix else "ok",
-            graph_entry=entry,
-            audit_entries=audit_entries,
-            warnings=pipe_warnings,
-            tokens=int(telem.get("total_tokens", 0) or 0),
-            cost=float(telem.get("total_cost", 0.0) or 0.0),
+    for i, _scene in enumerate(scenes, start=1):
+        yield run_single_scene_extraction(
+            scenes, i, system_prompt, by_num,
+            lexicon_ids=lexicon_ids, enable_audit=enable_audit,
         )
 
 

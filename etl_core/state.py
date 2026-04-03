@@ -19,6 +19,8 @@ class ETLState(TypedDict, total=False):
     # Observability
     audit_trail: list[dict[str, Any]]
     warnings: list[dict[str, Any]]
+    audit_decisions: list[dict[str, Any]]
+    lexicon_ids: list[str]
     total_tokens: int
     total_cost: float
 

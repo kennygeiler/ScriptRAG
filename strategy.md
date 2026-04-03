@@ -8,7 +8,7 @@
 
 ## 1. What this project is
 
-**ScriptRAG** is a **GraphRAG** system for screenplays: it turns structured script data into a **Neo4j** knowledge graph and exposes **structural "physics"** (agency, friction, prop load) through **`metrics.py`** / CLI and a **Streamlit** app with a self-healing AI extraction pipeline (**Pipeline**, **Verify**, **Reconcile**, **Data out**, **Pipeline Efficiency Tracking**).
+**ScriptRAG** is a **GraphRAG** system for screenplays: it turns structured script data into a **Neo4j** knowledge graph and exposes **structural "physics"** (agency, friction, prop load) through **`metrics.py`** / CLI and a **Streamlit** app with a self-healing AI extraction pipeline (**Pipeline**, **Audit & Verify**, **Reconcile**, **Data out**, **Pipeline Efficiency Tracking**).
 
 **Core philosophy — "ruthless structuralism":**  
 We do not infer vibes from prose alone. We map **narrative physics**: who acts on whom, where conflict is explicit, how passive a character is under a defined graph metric, and whether props earn their place. Evidence lives on edges as **verbatim `source_quote`** text from the script.
@@ -26,7 +26,7 @@ We do not infer vibes from prose alone. We map **narrative physics**: who acts o
 | Extract | `validated_graph.json` (per-scene `SceneGraph`) | `ingest.py` (exports `extract_scenes()` generator; checkpoints each scene; `--fresh` to wipe) |
 | Load | Neo4j nodes & relationships | `neo4j_loader.py` (exports `load_entries()` for in-memory data) |
 | Analyze | Passivity, heat, Chekhov, QA queries | `metrics.py`, `reconcile.py` |
-| Experience | Pipeline + Verify + Reconcile + Data out + efficiency | `app.py`, `pipeline_runs.py`, `cleanup_review.py`, `reconcile.py`, `data_out.py` |
+| Experience | Pipeline + Audit & Verify + Reconcile + Data out + efficiency | `app.py`, `pipeline_runs.py`, `cleanup_review.py`, `reconcile.py`, `data_out.py` |
 
 **Graph model (Neo4j):**
 
@@ -36,7 +36,7 @@ We do not infer vibes from prose alone. We map **narrative physics**: who acts o
 
 **Pipeline:** `parser.py` → `lexicon.py` → `ingest.py` (with `etl_core` self-healing loop: extract → validate → fix; optional **LLM semantic audit** after validate) → `neo4j_loader.py`. Runs in-process from Streamlit's **Pipeline** tab or via CLI. The `ingest.py` module exports `extract_scenes()` generator consumed by both paths.
 
-**Semantic audit (when enabled):** Three bundled LLM auditors (quote fidelity, completeness, attribution) run **once** per scene after validation passes. Findings are merged into **`warnings`** for **Verify** — there is **no** automated audit-repair loop (`audit_fixer` removed). Strong auditor “error” severities are promoted to warnings with `verify_from_audit_error` so the graph is never blocked; humans decide in **Verify**. **`MaxRetriesError`** applies only to **Pydantic / deterministic rules** repair (fixer), not to semantic audit.
+**Semantic audit (when enabled):** Three bundled LLM auditors (quote fidelity, completeness, attribution) run **once** per scene after validation passes. Each finding may include **`confidence`**, **`mapping_decision`**, **`risk_flags`**, and **`patch_*`** fields (`domains/screenplay/auditors.py`). **`domains/screenplay/audit_pipeline.py`** (`process_semantic_audit`) applies **gated auto-apply** for high-confidence, low-risk patches per **`etl_core/audit_policy.py`** (retype / remove / swap / optional completeness add); validated patches mutate **`current_json`** and append **`auditor_auto_apply`** entries to **`audit_trail`** (before/after snapshots). Remaining findings become **HITL** rows in **`warnings`** for **Audit & Verify**. Decision rows append to repo-root **`audit_decisions.jsonl`** (gitignored; same interpret runs in CLI ingest). Strong auditor “error” severities are still promoted to warnings with `verify_from_audit_error` when not auto-applied. There is **no** extra LLM **`audit_fixer`** loop. **`MaxRetriesError`** applies only to **Pydantic / deterministic rules** repair (fixer), not to semantic audit. **`lexicon_ids`** are passed through **`run_pipeline`** for business-rule and gate context.
 
 **Schema contract:** `schema.py` — Pydantic models for `SceneGraph`, nodes, and `Relationship` (proof quote required).
 
@@ -57,7 +57,8 @@ Use this as a checklist; flip items when reality changes.
 - [x] **Neo4j loader** (merge events, entities, `IN_SCENE`, narrative edges with quotes).
 - [x] **Metrics layer** (`metrics.py`): passivity (global and windowed), scene heat, load-bearing props, possessed-unused, Act I→III Chekhov-style audit, scene inspector quotes, character `IN_SCENE` counts.
 - [x] **Scene heat refinement:** numerator = **distinct unordered conflict pairs** in-scene (not raw `CONFLICTS_WITH` edge count) to reduce dialogue-bloat skew.
-- [x] **Streamlit app** (`app.py`): **ScriptRAG** — **Pipeline** (upload FDX, in-process extraction; persists **:PipelineRun**; self-healing **corrections** shown here), **Verify** (warnings with guidance + approve/decline; approve & load to Neo4j), **Reconcile** (`reconcile.py` scan + optional confirmed merges; ghosts + fuzzy Character/Location pairs), **Data out** (schema, recipe Cypher, CSV), **Pipeline Efficiency Tracking** (table from Neo4j; telemetry token/cost). Section navigation uses a **horizontal radio** (not `st.tabs`) so widget reruns keep the user on the same view (e.g. **Data out** recipe query).
+- [x] **Streamlit app** (`app.py`): **ScriptRAG** — **Pipeline** (upload FDX, in-process extraction; persists **:PipelineRun**; self-healing **corrections** including **auditor_auto_apply**; **chunked** scene loop with **cancel** and forced **Pipeline** navigation while running), **Audit & Verify** (warnings with guidance + approve/decline; approve & load to Neo4j), **Reconcile** (`reconcile.py` scan + optional confirmed merges; ghosts + fuzzy Character/Location pairs), **Data out** (schema, recipe Cypher, CSV), **Pipeline Efficiency Tracking** (table from Neo4j; telemetry token/cost). Section navigation uses a **horizontal radio** (not `st.tabs`) so widget reruns keep the user on the same view (e.g. **Data out** recipe query).
+- [x] **Semantic audit interpret (P0–P4):** **`audit_patch`** / **`audit_pipeline`** / **`audit_policy`**, **`DomainBundle.audit_post_process`** in **`etl_core/graph_engine.py`**, **`SceneResult.audit_decisions`** and **`run_single_scene_extraction`** in **`ingest.py`**; **`run_extraction_pipeline`** returns **`audit_decisions`**.
 - [x] **Self-healing ETL pipeline:** `etl_core` LangGraph engine (extract → validate → fix loop; optional one-pass LLM audit → warnings for Verify), `ingest.py` exports `extract_scenes()` generator, Streamlit consumes it with live per-scene progress.
 - [x] **Utilities:** `tools/debug_export.py` → `graph_qa_dump.json`; `tools/qa_entities.py` → `data_health_report.json`.
 
@@ -99,8 +100,8 @@ These definitions are what code should implement; if code diverges, fix code or 
 
 **Views (typical order)**
 
-1. **Pipeline** — Upload `.fdx`, run full extraction in-process (parse → lexicon → per-scene `extract_scenes()` with live progress). Stores results in `st.session_state`. On completion, writes a **`:PipelineRun`** row (efficiency metrics; in-app telemetry). Hidden when `DISABLE_PIPELINE=1`.
-2. **Verify** — Warnings (deterministic rules + semantic audit): **filter** / **sort** / **bulk Approve** (duplicates); **Approve preview**, **evidence expander**, **scene-grouped** cards, **no-auto-edit** banners; optional **per-warning notes**; **Decision log** CSV/JSON export + **last-load snapshot** (includes `neo4j_load_completed_at`). JSON path + per-warning approve/decline. Self-healing **corrections** in **Pipeline** (schema/rules fixer only). "Approve & Load" → `neo4j_loader.load_entries()` (graph wipe spares `:PipelineRun`).
+1. **Pipeline** — Upload `.fdx`, run extraction (parse → lexicon → **one scene per Streamlit rerun** with optional **Cancel**; while running, section is pinned to **Pipeline**). Stores results in `st.session_state`. On completion or cancel (partial), writes a **`:PipelineRun`** row. Shows **semantic audit decisions** (table) when present. Self-healing **corrections** include **fixer** and **auditor_auto_apply** (before/after graph deltas). Hidden when `DISABLE_PIPELINE=1`.
+2. **Audit & Verify** — Warnings (deterministic rules + semantic audit HITL): **filter** / **sort** / **bulk Approve** (duplicates); **Approve preview**, **evidence expander**, **scene-grouped** cards, **no-auto-edit** banners; optional **per-warning notes**; **Decision log** CSV/JSON export + **last-load snapshot** (includes `neo4j_load_completed_at`). JSON path + per-warning approve/decline. "Approve & Load" → `neo4j_loader.load_entries()` (graph wipe spares `:PipelineRun`). Prior session key **`Verify`** is migrated to this label.
 3. **Reconcile** — Optional **post-load** hygiene: ghost characters + fuzzy Character/Location pairs; optional merges (`reconcile.py`). *Default order places Reconcile before Data out unless* **`SCRIPTRAG_DEMO_LAYOUT=1`** *puts Data out first.*
 4. **Data out** — Schema card, live label/relationship counts, fixed **recipe Cypher** (parameterized), CSV downloads for narrative edges / characters / events (`data_out.py`).
 5. **Pipeline Efficiency Tracking** — Reads **`:PipelineRun`** from Neo4j (telemetry tokens/cost and run metadata).
@@ -109,7 +110,7 @@ These definitions are what code should implement; if code diverges, fix code or 
 
 **Cache:** Reconcile scan and Data out queries use `@st.cache_data` keyed on pipeline artifact mtimes (`validated_graph.json` / `pipeline_state.json` mtimes).
 
-**Demo layout:** Optional env **`SCRIPTRAG_DEMO_LAYOUT`** — when set, **Verify → Data out → Reconcile → …** (otherwise **Verify → Reconcile → Data out → …**).
+**Demo layout:** Optional env **`SCRIPTRAG_DEMO_LAYOUT`** — when set, **Audit & Verify → Data out → Reconcile → …** (otherwise **Audit & Verify → Reconcile → Data out → …**).
 
 ---
 
@@ -170,7 +171,10 @@ Follow these in every change unless the user explicitly overrides.
 | `README.md` | Human onboarding & commands (includes **demo walkthrough** + `samples/` pointers) |
 | `samples/` | Bundled `.fdx` (+ PDF companions): Cinema Four + Ludwig micro-sample; `samples/README.md` |
 | `schema.py` | Pydantic graph contract |
-| `ingest.py` | LLM extraction → `validated_graph.json` (exports `extract_scenes()` generator + `SceneResult`) |
+| `ingest.py` | LLM extraction → `validated_graph.json` (exports `extract_scenes()` + `run_single_scene_extraction` + `SceneResult`; `audit_decisions` per scene) |
+| `domains/screenplay/audit_patch.py` | Gates + apply semantic patches; validate after patch |
+| `domains/screenplay/audit_pipeline.py` | `process_semantic_audit`; append **`audit_decisions.jsonl`** |
+| `etl_core/audit_policy.py` | Auto-apply thresholds and risk flags |
 | `metrics.py` | All graph analytics queries |
 | `app.py` | Streamlit application (ScriptRAG) |
 | `neo4j_loader.py` | JSON → Neo4j (exports `load_entries()`) |

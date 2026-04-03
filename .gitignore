@@ -16,3 +16,4 @@ desktop.pub
 
 # LangGraph ingest audit (local; can grow large)
 extraction_audit.jsonl
+audit_decisions.jsonl

@@ -9,6 +9,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from domains.screenplay.audit_pipeline import process_semantic_audit
 from domains.screenplay.auditors import run_audits
 from domains.screenplay.rules import validate_business_logic
 from domains.screenplay.schemas import SceneGraph
@@ -58,4 +59,5 @@ def get_bundle(*, lexicon_ids: set[str] | None = None, enable_audit: bool = True
         extract_llm=_extract_llm,
         fix_llm=_fix_llm,
         audit_llm=_audit_llm if enable_audit else None,
+        audit_post_process=process_semantic_audit if enable_audit else None,
     )
