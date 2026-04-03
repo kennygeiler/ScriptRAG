@@ -13,7 +13,8 @@ Each run stores integer **`telemetry_version`** in Neo4j. **Pipeline Efficiency 
 | **0** | **Legacy** — rows created before **`telemetry_version`** existed. The UI shows **0** when the property is missing. Stage columns (**E/F/A**) are **unreliable** (often all zero even if totals exist). |
 | **1** | **Roadmap Phase 0 shipped** (`strategy.md` *Telemetry Phase 0*): per-stage **extract / fix / audit** token and USD buckets end-to-end. (**Version numbers are offset from phase labels so 0 stays “unknown/legacy.”**) |
 | **2** | **Phase 1 shipped:** compact lexicon in extraction **system** prompt (`ingest.compact_lexicon_for_prompt`); **compact JSON** (no indent) for **auditor** and **fixer** user payloads; **audit** `max_tokens=2048`; fixer includes trimmed original instructions (**8k** chars) and **120k**-char user cap. Log a **post** run next to the v1 baseline to measure savings. |
-| **3+** | Phase 2+ (model routing, conditional audit, …) — bump **`PIPELINE_TELEMETRY_VERSION`** when storage/attribution contract changes again. |
+| **3** | **Phase 2 shipped:** **Haiku-first** for bundled **semantic auditors** (`call_audit_llm_with_usage`); **Sonnet** on failure; extract/fixer stay **Sonnet → Haiku**. **`PIPELINE_TELEMETRY_VERSION = 3`**. Append a **Results log** row when you benchmark v2 vs v3 on the same script/range. |
+| **4+** | Phase 3+ (conditional audit, caching, …) — bump **`PIPELINE_TELEMETRY_VERSION`** when storage/attribution contract changes again. |
 
 **Operator rule:** When you complete a new efficiency phase in code, **increment `PIPELINE_TELEMETRY_VERSION`**, update this table, and append a row under **Results log**.
 
@@ -30,10 +31,11 @@ Each run stores integer **`telemetry_version`** in Neo4j. **Pipeline Efficiency 
 
 ## Baseline marker — entering Phase 1 (2026-04-03 UTC)
 
-**Milestone:** Last calibrated run under **Token Agent v1** (roadmap **Phase 0** complete). **Phase 1** = prompt/payload shrink (`strategy.md` roadmap). Use this row as the **before** snapshot when comparing a future run after Phase 1 work (ideally same script + scene count).
+**Milestone:** Last calibrated run under **Token Agent v1** (roadmap **Phase 0** complete). **Phase 1** = prompt/payload shrink (`strategy.md` roadmap). **Script:** **Ludwig.fdx** (5-scene run). Use as **before** snapshot vs **v2** on the same screenplay.
 
 | | |
 |--|--|
+| **Script** | **Ludwig.fdx** |
 | **Scenes extracted / total** | 5 / 5 |
 | **Corrections** | 5 |
 | **Warnings** | 10 |
@@ -53,14 +55,27 @@ Add rows as you ship phases. Copy from **Pipeline Efficiency Tracking** or expor
 
 | Date (UTC) | Token Agent | Strategy phase | Script / range | Scenes ext. | Corr. | Warn. | Fail | Total tok | Total $ | E / F / A tok | $ E / F / A | Notes |
 |------------|-------------|----------------|----------------|------------|-------|-------|------|-----------|---------|---------------|-------------|-------|
-| 2026-04-03 | v1 | Phase 0 **done**; pre–Phase 1 | *(run in baseline table above)* | 5/5 | 5 | 10 | 0 | 150,957 | 0.9114 | 25,078 / 32,553 / 93,326 | 0.1752 / 0.1903 / 0.5459 | Baseline before Phase 1 code |
-| *(add)* | v2 | **Phase 1 shipped** | same script/range as v1 row if possible | | | | | | | | | *Fill after first **v2** pipeline run for A/B* |
+| 2026-04-03 | v1 | Phase 0 **done**; pre–Phase 1 | **Ludwig.fdx** (5 scenes) | 5/5 | 5 | 10 | 0 | 150,957 | 0.9114 | 25,078 / 32,553 / 93,326 | 0.1752 / 0.1903 / 0.5459 | Baseline before Phase 1 code |
+| 2026-04-03 | v2 | **Phase 1 shipped** | **Ludwig.fdx** (5 scenes) | 5/5 | 5 | 7 | 0 | 120,671 | 0.7177 | 22,922 / 20,533 / 77,216 | 0.1643 / 0.1204 / 0.4331 | Same script + range as v1 |
+
+### Phase 1 A/B (**Ludwig.fdx**, 5 scenes)
+
+| Metric | v1 (pre–Phase 1) | v2 (Phase 1) | Delta |
+|--------|------------------|--------------|-------|
+| Total tokens | 150,957 | 120,671 | **−20.1%** |
+| Total $ (est.) | 0.9114 | 0.7177 | **−21.3%** |
+| Audit tokens | 93,326 | 77,216 | −17.3% |
+| Fix tokens | 32,553 | 20,533 | −36.9% |
+| Extract tokens | 25,078 | 22,922 | −8.6% |
+| Warnings | 10 | 7 | −3 (LLM/audit variance; not a savings target) |
+
+**Note:** Same **.fdx** and **5-scene** scope for both runs; token/$ deltas attribute primarily to Phase 1 prompt/payload changes.
 
 ---
 
 ## Phase 1 implementation summary (Token Agent v2)
 
-Shipped in repo: **`PIPELINE_TELEMETRY_VERSION = 2`**. Compare **v2** Efficiency rows to the **v1** baseline (same scene count when benchmarking).
+Shipped in repo: **`PIPELINE_TELEMETRY_VERSION = 2`**. Validated on **Ludwig.fdx** (5 scenes) vs **v1** on the same script/range — see A/B table above.
 
 | Change | Files |
 |--------|--------|

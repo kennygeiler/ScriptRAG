@@ -41,7 +41,7 @@ from reconcile import (
     merge_entities,
     run_reconciliation_scan,
 )
-from etl_core.telemetry import PIPELINE_TELEMETRY_VERSION
+from etl_core.telemetry import PIPELINE_TELEMETRY_VERSION, TOKEN_AGENT_SUMMARY_MD
 from data_out import (
     DEMO_QUERY_SPECS,
     graph_schema_card_markdown,
@@ -1556,6 +1556,13 @@ if _active == "Pipeline Efficiency Tracking":
         "Totals plus **per-stage** extract / fix / audit tokens and estimated USD (see **strategy.md**, **Telemetry.md**). "
         "**Script Name** is the uploaded screenplay’s original filename when you used the Pipeline uploader, otherwise the on-disk pipeline target (**target_script.fdx**)."
     )
+    with st.expander("Token Agent / Telemetry version summary", expanded=False):
+        st.markdown(
+            "The **Token Agent** column mirrors integer **`telemetry_version`** on the node (`v0` = legacy). "
+            f"Current code writes **`v{PIPELINE_TELEMETRY_VERSION}`** on new runs. "
+            "Authoritative changelog: **`Telemetry.md`** (repo root)."
+        )
+        st.markdown(TOKEN_AGENT_SUMMARY_MD)
     try:
         _drv_eff = get_driver()
         try:

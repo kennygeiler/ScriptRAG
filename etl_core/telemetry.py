@@ -16,9 +16,18 @@ _DEFAULT_INPUT = 3.00
 _DEFAULT_OUTPUT = 15.00
 
 # Stored on each Neo4j :PipelineRun as ``telemetry_version``. **0** = legacy (missing property).
-# **1** = Phase 0 (per-stage attribution). **2** = Phase 1 (prompt/payload shrink — compact lexicon + compact audit/fix JSON, audit max_tokens).
-# Increment when stored telemetry shape or attribution meaningfully changes; document in **Telemetry.md**.
-PIPELINE_TELEMETRY_VERSION = 2
+# **1** = Phase 0 (per-stage attribution). **2** = Phase 1 (compact prompts/payloads).
+# **3** = Phase 2 (Haiku-first semantic audit, Sonnet fallback; see ``extraction_llm.call_audit_llm_with_usage``).
+# Increment when attribution or stored fields change materially; document in **Telemetry.md**.
+PIPELINE_TELEMETRY_VERSION = 3
+
+# Pipeline Efficiency tab — single source for operator-facing blurbs (mirror **Telemetry.md**).
+TOKEN_AGENT_SUMMARY_MD = """
+- **v0** — **Legacy:** row predates `telemetry_version`; **Tok E / F / A** and **$ E / F / A** show **N/A**. Totals may still be useful.
+- **v1** — **Phase 0:** per-stage **extract / fix / audit** token and estimated USD on every run.
+- **v2** — **Phase 1:** compact lexicon system prompt; compact JSON for audit + fixer user messages; auditor output capped (`max_tokens`).
+- **v3** — **Phase 2:** **Haiku-first** for the three bundled **semantic auditors** (Sonnet on failure); extract and fixer stay **Sonnet → Haiku** fallback.
+""".strip()
 
 
 def estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:

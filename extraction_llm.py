@@ -115,17 +115,23 @@ def call_audit_llm_with_usage(
     system_prompt: str,
     response_model: type[BaseModel],
 ) -> tuple[BaseModel, dict[str, Any]]:
-    """Structured-output call for auditor agents, with primary→fallback."""
+    """Structured-output call for semantic auditors (Phase 2: **Haiku first**, Sonnet fallback).
+
+    Extract/fix remain Sonnet→Haiku in ``call_llm_primary_fallback_with_usage`` /
+    ``call_fix_llm_with_usage``; audits dominated input token cost, so cheaper model first.
+    """
     try:
         return call_llm_with_usage(
-            PRIMARY_MODEL, user_text,
+            FALLBACK_MODEL,
+            user_text,
             system_prompt=system_prompt,
             response_model=response_model,
             max_tokens=_AUDIT_MAX_TOKENS,
         )
     except (APIStatusError, Exception):
         return call_llm_with_usage(
-            FALLBACK_MODEL, user_text,
+            PRIMARY_MODEL,
+            user_text,
             system_prompt=system_prompt,
             response_model=response_model,
             max_tokens=_AUDIT_MAX_TOKENS,

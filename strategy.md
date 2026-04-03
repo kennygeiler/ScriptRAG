@@ -42,7 +42,7 @@ We do not infer vibes from prose alone. We map **narrative physics**: who acts o
 
 **Secrets / env:** `.env` — `ANTHROPIC_API_KEY`, `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD`. Optional **LangSmith** (`LANGCHAIN_TRACING_V2`, `LANGCHAIN_API_KEY`, `LANGCHAIN_PROJECT`) for optional trace export to LangSmith. Never commit secrets; use **`.env.example`** as a template.
 
-**Efficiency persistence:** Each completed pipeline run creates a **`:PipelineRun`** node in Neo4j (`pipeline_runs.py`). Graph wipe for reload excludes `:PipelineRun` so history survives **Approve & Load**. **Phase 0 (shipped):** each run and per-scene pipeline path record **extract / fix / audit** token and estimated USD buckets in LangGraph state (`etl_core/telemetry.py` `accumulate_usage` + `ETLState`), aggregated on **`PipelineRun`**, and shown in **Pipeline Efficiency Tracking** and the **Pipeline** tab summary. Each row stores **`telemetry_version`** / UI **Token Agent** **`v0`…`v2`** (**0** = legacy; **1** = Phase 0 instrumentation; **2** = Phase 1 prompt/payload); see **`Telemetry.md`**.
+**Efficiency persistence:** Each completed pipeline run creates a **`:PipelineRun`** node in Neo4j (`pipeline_runs.py`). Graph wipe for reload excludes `:PipelineRun` so history survives **Approve & Load**. **Phase 0 (shipped):** each run and per-scene pipeline path record **extract / fix / audit** token and estimated USD buckets in LangGraph state (`etl_core/telemetry.py` `accumulate_usage` + `ETLState`), aggregated on **`PipelineRun`**, and shown in **Pipeline Efficiency Tracking** and the **Pipeline** tab summary. Each row stores **`telemetry_version`** / UI **Token Agent** **`v0`…`v3`** (**0** = legacy; **1** = Phase 0 instrumentation; **2** = Phase 1 prompt/payload; **3** = Phase 2 Haiku-first audit); see **`Telemetry.md`**. **Pipeline Efficiency Tracking** includes an expander **Token Agent / Telemetry version summary** (same blurbs as **`TOKEN_AGENT_SUMMARY_MD`** in **`etl_core/telemetry.py`**).
 
 ---
 
@@ -63,6 +63,7 @@ Use this as a checklist; flip items when reality changes.
 - [x] **Utilities:** `tools/debug_export.py` → `graph_qa_dump.json`; `tools/qa_entities.py` → `data_health_report.json`.
 - [x] **Telemetry Phase 0 — stage attribution:** Per-stage tokens/cost (extract, fix, semantic audit) flow from LangGraph → `SceneResult` → Streamlit aggregates → `:PipelineRun` properties (`extract_*`, `fix_*`, `audit_*`) + Efficiency table / Pipeline metrics row.
 - [x] **Telemetry Phase 1 — prompt/payload efficiency:** Compact lexicon block for extraction system prompt; compact JSON for audit + fixer user messages; auditor `max_tokens=2048`; tighter fixer context caps. **`telemetry_version` / Token Agent `v2`**. Baseline vs post logged in **`Telemetry.md`**.
+- [x] **Telemetry Phase 2 — model routing (cheaper audit):** Bundled **semantic auditors** call **Haiku first** with **Sonnet** fallback (`extraction_llm.call_audit_llm_with_usage`); extract and fixer remain **Sonnet → Haiku**. **`telemetry_version` / Token Agent `v3`**. Log a **v3** benchmark row in **`Telemetry.md`** when you have numbers.
 
 ### In progress / known gaps
 
@@ -110,8 +111,8 @@ These definitions are what code should implement; if code diverges, fix code or 
 |-------|------|
 | **0** | **Instrumentation** — stage buckets end-to-end (LangGraph → Neo4j `PipelineRun` → UI). **Done.** |
 | **1** | Prompt/payload shrink (compact lexicon system prompt, compact audit/fix JSON, audit output cap). **Done** — details **`Telemetry.md`**; Token Agent **`v2`**. |
-| **2** | Model routing (Haiku vs Sonnet by stage; cheaper audit). **Next.** |
-| **3** | Conditional / tiered audit (skip or shorten when safe) |
+| **2** | Model routing (Haiku vs Sonnet by stage; cheaper audit). **Done** — Haiku-first audit in **`extraction_llm`**; Token Agent **`v3`**. |
+| **3** | Conditional / tiered audit (skip or shorten when safe). **Next.** |
 | **4** | Cache, dedup, optional batch/offline ingest |
 | **5** | Pricing table accuracy + optional invoice-grade export |
 
@@ -133,7 +134,7 @@ These definitions are what code should implement; if code diverges, fix code or 
 2. **Audit & Verify** — Warnings (deterministic rules + semantic audit HITL): **filter** / **sort** / **bulk Approve** (duplicates); **Approve preview**, **evidence expander**, **scene-grouped** cards, **no-auto-edit** banners; optional **per-warning notes**; **Decision log** CSV/JSON export + **last-load snapshot** (includes `neo4j_load_completed_at`). JSON path + per-warning approve/decline. "Approve & Load" → `neo4j_loader.load_entries()` (graph wipe spares `:PipelineRun`). Prior session key **`Verify`** is migrated to this label.
 3. **Reconcile** — Optional **post-load** hygiene: ghost characters + fuzzy Character/Location pairs; optional merges (`reconcile.py`). *Default order places Reconcile before Data out unless* **`SCRIPTRAG_DEMO_LAYOUT=1`** *puts Data out first.*
 4. **Data out** — Schema card, live label/relationship counts, fixed **recipe Cypher** (parameterized), CSV downloads for narrative edges / characters / events (`data_out.py`).
-5. **Pipeline Efficiency Tracking** — Reads **`:PipelineRun`** from Neo4j. Column **Token Agent** shows **`v0`**, **`v1`**, … (from integer **`telemetry_version`**). **v0** legacy rows: per-stage **Tok E / F / A** and **$ E / F / A** display **N/A** (not tracked).
+5. **Pipeline Efficiency Tracking** — Reads **`:PipelineRun`** from Neo4j. Column **Token Agent** shows **`v0`**, **`v1`**, … (from integer **`telemetry_version`**). **v0** legacy rows: per-stage **Tok E / F / A** and **$ E / F / A** display **N/A** (not tracked). Expander **Token Agent / Telemetry version summary** explains **v0–v3** and roadmap alignment.
 
 **Sidebar:** **Reload Neo4j cache** clears `@st.cache_data`. **Reset graph data** clears the screenplay graph in Neo4j and local pipeline JSON but keeps **:PipelineRun** rows.
 
