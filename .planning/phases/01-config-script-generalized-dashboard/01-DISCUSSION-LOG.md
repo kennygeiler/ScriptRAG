@@ -68,5 +68,12 @@
 
 ## Deferred Ideas
 
-- Auto-detect protagonist from graph topology — deferred (see CONTEXT).
 - Phase 2–4 scope items — explicitly out of this discussion.
+
+---
+
+## Amendment — 2026-04-03 (scope)
+
+**User direction:** (1) **Leads discerned by analysis** (graph/metrics), not config-only; optional env/file **overrides**. (2) **GEN-01** applies to **all Streamlit tabs** and related operator-facing modules (`cleanup_review.py`, `agent.py`, `pipeline_runs.py` as needed)—not dashboard-only.
+
+**Files updated:** `01-CONTEXT.md`, `.planning/REQUIREMENTS.md`, `.planning/ROADMAP.md`, `.planning/PROJECT.md`.

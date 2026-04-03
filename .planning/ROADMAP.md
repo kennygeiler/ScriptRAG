@@ -10,7 +10,7 @@ This milestone takes ScriptRAG from Cinema Four–centric defaults and brittle d
 - Integer phases (1, 2, 3, 4): Planned milestone work
 - Decimal phases (e.g. 2.1): Urgent insertions via `/gsd-insert-phase`
 
-- [ ] **Phase 1: Config & script-generalized dashboard** — Protagonist/lead IDs and role-dependent labels come from env or project config, not hardcoded constants.
+- [ ] **Phase 1: Config & script-generalized dashboard** — Leads are **analysis-discerned** from the graph/metrics; optional env/project config **overrides**; script-agnostic copy across **all** Streamlit tabs (not dashboard-only).
 - [ ] **Phase 2: Graph reliability & empty states** — Empty, partial, or schema-skewed Neo4j never takes down Streamlit metric paths.
 - [ ] **Phase 3: Reconciliation for operators** — `reconcile.py` workflows are usable and documented at a defined scope with safe merge semantics.
 - [ ] **Phase 4: Production complexity signal** — Initial density- or structure-derived complexity/cost signal in app or CLI, alongside existing metrics.
@@ -18,13 +18,13 @@ This milestone takes ScriptRAG from Cinema Four–centric defaults and brittle d
 ## Phase Details
 
 ### Phase 1: Config & script-generalized dashboard
-**Goal**: Operators run analytics and dashboards for arbitrary scripts using configuration and graph-derived identity instead of editing Python constants or script-specific defaults.
+**Goal**: Operators run the full Streamlit app for arbitrary scripts using **analysis-derived lead identity** (structural metrics) with **optional overrides**, instead of hardcoded constants or production-specific defaults.
 **Depends on**: Nothing (first phase)
 **Requirements**: CONFIG-01, GEN-01
 **Success Criteria** (what must be TRUE):
-  1. Operator sets protagonist/lead identifiers via environment variables or a small project config file; `PROTAGONIST_ID`-style constants in `app.py` are no longer the only way to get correct regression and role-dependent behavior.
-  2. Dashboard labels and takeaways that previously assumed fixed character IDs use config-driven or graph-derived identities so a new script does not require code edits for basic correctness.
-  3. After changing config, reloading the app shows updated lead-dependent charts or copy without redeploying code changes to constants.
+  1. Primary (and any UI-relevant) leads for regression warnings and role-dependent analytics come from **documented graph/metrics analysis**; environment or small project config can **override or pin** when needed; `PROTAGONIST_ID`-style constants are not the sole source of truth.
+  2. User-visible copy and labels across **Pipeline, Cleanup Review, Pipeline Efficiency Tracking, Dashboard, and Investigate** (and related operator-facing modules) use analysis- or graph-derived identities (plus overrides)—not fixed script-specific character IDs in code.
+  3. After changing **override** config, a Streamlit restart (or redeploy) reflects updated lead-dependent behavior; changing loaded graph data continues to drive analysis through existing cache/data paths.
 **Plans**: TBD
 **UI hint**: yes
 

@@ -24,10 +24,10 @@ End-to-end, **evidence-backed** structural analysis of a screenplay in a queryab
 
 ### Active
 
-- [ ] **Config-driven lead/protagonist IDs** — replace hardcoded `PROTAGONIST_ID` (and similar) with env or project config for regression checks and chart copy (`strategy.md` §3, §6).
+- [ ] **Analysis-derived leads + optional overrides** — primary lead(s) from structural graph/metrics analysis; env or project config to pin/adjust; remove hardcoded `PROTAGONIST_ID` as sole source (`strategy.md` §3, §6).
 - [ ] **Empty / partial graph hardening** — clear user messaging; no uncaught KeyErrors or broken DataFrame paths when Neo4j or artifacts are missing or incomplete (`strategy.md` §6).
 - [ ] **Reconciliation at scale** — expand `reconcile.py` usage from CLI/dashboard with safe merge patterns documented in UI (`strategy.md` §6).
-- [ ] **Script-agnostic dashboard copy** — reduce Cinema Four–specific defaults in UI where metrics should generalize (`strategy.md` §1, §3).
+- [ ] **Script-agnostic UI copy (all tabs)** — reduce Cinema Four–specific defaults across Streamlit tabs and operator-facing helpers where metrics should generalize (`strategy.md` §1, §3).
 - [ ] **Phase 3 complexity signals** — initial production-oriented overlays from graph density without diluting structural truth (`strategy.md` §3 roadmap).
 
 ### Out of Scope

@@ -6,36 +6,40 @@
 <domain>
 ## Phase Boundary
 
-Deliver **config-driven protagonist/lead identifiers** and **script-agnostic dashboard presentation** so operators can analyze arbitrary screenplays without editing Python constants in `app.py` (CONFIG-01, GEN-01). Does **not** include empty-state hardening (Phase 2), reconciliation UX (Phase 3), or complexity signals (Phase 4).
+Deliver **analysis-discerned lead character(s)** (primary + optional cohort) for regression and role-dependent analytics, with **optional env/config overrides** when operators want to pin or adjust what the graph implies—so arbitrary screenplays work without hardcoded constants in `app.py` (CONFIG-01, GEN-01).
+
+Deliver **script-agnostic, graph-grounded presentation across all Streamlit tabs** (Pipeline, Cleanup Review, Pipeline Efficiency Tracking, Dashboard, Investigate)—not only the Dashboard tab.
+
+Does **not** include empty-state hardening (Phase 2), reconciliation UX (Phase 3), or complexity signals (Phase 4).
 
 </domain>
 
 <decisions>
 ## Implementation Decisions
 
-### Configuration source & precedence
+### Analysis vs override (precedence)
 
-- **D-01:** **Environment variables first** — add documented vars (e.g. protagonist id) alongside existing `NEO4J_*` / `ANTHROPIC_API_KEY` pattern in `.env.example`. Matches deployment (Render, Docker) and current project norms.
-- **D-02:** **Optional file config (Claude discretion)** — if a single env var is insufficient for display-name maps or multiple tracked leads, use a **small repo-root file** (e.g. `scriptrag.toml` or `scriptrag.yaml`) with an **example** committed (`scriptrag.example.toml`) and real file gitignored or env-pointed. Prefer TOML/YAML over adding Streamlit-only secrets UI in this phase unless trivial.
+- **D-01:** **Primary source — graph analysis.** Derive the **primary lead** (and any **secondary leads** the UI needs) from **existing structural metrics** in `metrics.py` / Neo4j (e.g. interaction counts, co-presence, patterns already used for “top characters”—planner picks the exact callable(s) and documents the rule). Must stay consistent with **strategy.md** metric definitions (structural, not vibes).
+- **D-02:** **Override layer — env (and optional small file).** Document env vars (e.g. pin primary lead id, optional comma-separated lead list, optional integer for top-K) in `.env.example` so operators can **force** or **adjust** analysis output when they disagree with the automatic ranking. Optional repo-root `scriptrag.toml` / YAML **example** only if multiple knobs are cleaner than env alone.
 
 ### Which identifiers and constants move out of code
 
-- **D-03:** **Minimum for CONFIG-01:** Replace hardcoded `PROTAGONIST_ID = "zev"` in `app.py` with value from **env** (required for regression warning path). Keep backward-compatible default only if unset **only during transition** — prefer explicit unset → clear sidebar message (see D-06).
-- **D-04:** **`TOP_INTERACTION_CHARACTERS` (currently 5)** — make overridable via env (integer) in same pass if low cost; otherwise defer note in plan.
-- **D-05:** Do **not** expand scope to every magic string in the repo in one plan; **GEN-01** focuses on **dashboard tab** user-visible copy and chart labels that assume fixed Cinema Four roles.
+- **D-03:** Remove hardcoded **`PROTAGONIST_ID = "zev"`** as the sole source of truth. **Default behavior:** use **analysis-derived primary lead** for regression warning and `_extra`-style wiring; **env override** applies when set. Do not invent arbitrary characters—ranking must come from loaded graph data (or clear empty-graph path in Phase 2 if no data).
+- **D-04:** **`TOP_INTERACTION_CHARACTERS` (currently 5)** — make overridable via env (integer) in same pass if low cost; align with analysis-derived cohort where applicable.
+- **D-05:** **GEN-01 scope — all Streamlit tabs** in `app.py` **plus** strings in **`cleanup_review.py`**, **`agent.py`**, **`pipeline_runs.py`** if they expose user-visible script-specific names or fixed IDs tied to one production. Do **not** expand to test fixtures, auditor prompt **examples**, or `schema.py` sample payloads unless they surface in the live app.
 
 ### Reload & caching
 
-- **D-06:** **Document** that changing config requires **Streamlit restart** (or container redeploy). **Optional stretch:** invalidate relevant `@st.cache_data` keys when an optional config file mtime changes — planner may include if trivial; otherwise Phase 1 ships restart semantics only.
+- **D-06:** **Document** that changing **override** config requires **Streamlit restart** (or redeploy). Analysis output changes when **graph data** changes (existing cache stamps). **Optional stretch:** invalidate `@st.cache_data` when override file mtime changes.
 
-### Behavior when protagonist id is missing from graph
+### Behavior when leads cannot be resolved
 
-- **D-07:** If the configured protagonist id is **absent** from the act passivity matrix / graph, show an **`st.info` or sidebar notice** (“Protagonist id `x` not found in loaded graph”) and **skip** the regression warning — no silent failure, no picking an arbitrary character.
+- **D-07:** If the graph yields **no viable lead candidate** (empty graph, degenerate metrics) **or** an **override id** is set but **absent** from the act matrix, show **`st.info` / sidebar notice** and **skip** the regression warning — no silent failure, no random pick.
 
 ### Display names & GEN-01 copy
 
-- **D-08:** User-facing character labels in charts/warnings should use **Neo4j/lexicon display naming** where the data path already provides it; otherwise show the **canonical snake_case id** — avoid hardcoded proper names in new strings.
-- **D-09:** Regression warning copy stays **generic** (“the protagonist”) with the **resolved id/label** interpolated from data — no script-specific flavor text.
+- **D-08:** User-facing labels use **Neo4j / lexicon / analysis result** naming everywhere tabs show character identity; avoid hardcoded production-specific proper names in operator-visible strings.
+- **D-09:** Regression warning stays **generic** (“primary lead” / “the lead”) with **resolved id/label** from analysis or override — no script-specific flavor text.
 
 ### Claude's Discretion
 
@@ -72,8 +76,10 @@ Deliver **config-driven protagonist/lead identifiers** and **script-agnostic das
 
 ### Implementation touchpoints
 
-- `app.py` — `PROTAGONIST_ID`, `_protagonist_regression_warning`, `_extra` / act matrix wiring, dashboard captions (~L41–L451+)
-- `.env.example` — add new variable names (no secrets)
+- `app.py` — all tabs: Pipeline, Cleanup Review, Efficiency, Dashboard, Investigate; `PROTAGONIST_ID`, `_protagonist_regression_warning`, `_extra` / act matrix, captions and chart copy
+- `metrics.py` — lead-ranking / top-character queries reused or extended for analysis-derived primary lead
+- `cleanup_review.py`, `agent.py`, `pipeline_runs.py` — user-visible copy only where script-specific
+- `.env.example` — override variable names (no secrets)
 
 </canonical_refs>
 
@@ -88,12 +94,12 @@ Deliver **config-driven protagonist/lead identifiers** and **script-agnostic das
 ### Established patterns
 
 - **Single-module Streamlit app** — wide layout, `st.session_state`, Plotly charts; new config should stay readable at module top or small helper module at repo root if `app.py` grows.
-- **Parameterized Cypher** in `metrics.py` — do not break when adding config-driven ids.
+- **Parameterized Cypher** in `metrics.py` — lead analysis must remain parameterized; no string-built Cypher from UI.
 
 ### Integration points
 
-- Protagonist id flows: **act passivity matrix** → **`_protagonist_regression_warning`**; **power shift** top-character list composition (`_extra` tuple).
-- **Sidebar** — appropriate place for “current protagonist id” debug/readout for operators.
+- **Lead resolution** feeds: act passivity matrix → regression warning; power-shift / top-character composition (`_extra` tuple); any tab that names a “focus” character.
+- **Sidebar** — show **resolved primary lead** (analysis vs override) for operator clarity.
 
 </code_context>
 
@@ -101,7 +107,7 @@ Deliver **config-driven protagonist/lead identifiers** and **script-agnostic das
 ## Specific Ideas
 
 - **strategy.md** explicitly calls out `PROTAGONIST_ID` constant and Cinema Four–centric defaults as technical debt to generalize.
-- User did not supply alternate product references in this discuss session; defaults above align with roadmap success criteria.
+- **2026-04-03 (user):** Leads should be **discerned by analysis** (not config-only); **GEN-01** covers **all Streamlit tabs** and related modules with user-visible copy. Reload/override semantics and TOP_K env tweak remain as before.
 
 </specifics>
 
@@ -111,7 +117,6 @@ Deliver **config-driven protagonist/lead identifiers** and **script-agnostic das
 - **Phase 2:** Empty / partial Neo4j and DataFrame hardening (REL-01).
 - **Phase 3:** Reconciliation operator surfaces (REC-01).
 - **Phase 4:** Production complexity signal (MET-01).
-- **Auto-pick “main character” from graph** (e.g. max degree) — out of scope; config remains explicit per D-07.
 
 ### Reviewed Todos (not folded)
 

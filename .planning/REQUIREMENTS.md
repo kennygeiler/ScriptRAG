@@ -6,8 +6,8 @@ Requirements for the **current planning milestone**: hardening, generalization, 
 
 ### Configuration & generalization
 
-- [ ] **CONFIG-01**: Operators can set protagonist/lead identifiers used for regression warnings and role-dependent analytics via environment variables or a small project config file, without editing `PROTAGONIST_ID` constants in `app.py`.
-- [ ] **GEN-01**: Dashboard labels and takeaways that assume fixed character IDs default to config-driven or graph-derived identities so a new script does not require code edits for basic correctness.
+- [ ] **CONFIG-01**: Primary lead(s) for regression warnings and role-dependent analytics are **derived from graph/metrics analysis** (structural signals in `metrics.py` / Neo4j); operators may **override or pin** via environment variables or a small project config file—no hardcoded `PROTAGONIST_ID`-style constants as the only source of truth in `app.py`.
+- [ ] **GEN-01**: User-visible copy across **all Streamlit tabs** (and related modules such as `cleanup_review.py`, `agent.py`, `pipeline_runs.py` where operator-facing) avoids fixed production-specific character IDs; labels use analysis- or graph-derived identities (plus overrides) so a new script does not require code edits for basic correctness.
 
 ### Reliability & UX
 
