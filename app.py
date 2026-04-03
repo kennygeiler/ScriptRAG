@@ -41,6 +41,7 @@ from reconcile import (
     merge_entities,
     run_reconciliation_scan,
 )
+from etl_core.telemetry import PIPELINE_TELEMETRY_VERSION
 from data_out import (
     DEMO_QUERY_SPECS,
     graph_schema_card_markdown,
@@ -88,6 +89,13 @@ def _persist_pipeline_run(
     failed_scenes: int,
     llm_auditors_enabled: bool,
     fdx_filename: str = "",
+    extract_tokens: int = 0,
+    extract_cost_usd: float = 0.0,
+    fix_tokens: int = 0,
+    fix_cost_usd: float = 0.0,
+    audit_tokens: int = 0,
+    audit_cost_usd: float = 0.0,
+    telemetry_version: int = PIPELINE_TELEMETRY_VERSION,
 ) -> bool:
     drv = None
     try:
@@ -103,6 +111,13 @@ def _persist_pipeline_run(
             failed_scenes=failed_scenes,
             llm_auditors_enabled=llm_auditors_enabled,
             fdx_filename=fdx_filename,
+            extract_tokens=extract_tokens,
+            extract_cost_usd=extract_cost_usd,
+            fix_tokens=fix_tokens,
+            fix_cost_usd=fix_cost_usd,
+            audit_tokens=audit_tokens,
+            audit_cost_usd=audit_cost_usd,
+            telemetry_version=telemetry_version,
         )
         return True
     except Exception:
@@ -709,6 +724,8 @@ The hallucinated-quote check substring-matches each `source_quote` against the s
                         corrections: list[dict[str, Any]] = []
                         cum_tokens = 0
                         cum_cost = 0.0
+                        cum_ext_tok = cum_fix_tok = cum_aud_tok = 0
+                        cum_ext_cost = cum_fix_cost = cum_aud_cost = 0.0
                         failed_count = 0
                         done_count = 0
 
@@ -745,6 +762,12 @@ The hallucinated-quote check substring-matches each `source_quote` against the s
                             all_audit.extend(result.audit_entries)
                             cum_tokens += result.tokens
                             cum_cost += result.cost
+                            cum_ext_tok += result.extract_tokens
+                            cum_ext_cost += result.extract_cost
+                            cum_fix_tok += result.fix_tokens
+                            cum_fix_cost += result.fix_cost
+                            cum_aud_tok += result.audit_tokens
+                            cum_aud_cost += result.audit_cost
                             if result.audit_decisions:
                                 all_audit_decisions.extend(result.audit_decisions)
 
@@ -776,6 +799,12 @@ The hallucinated-quote check substring-matches each `source_quote` against the s
                             "failed": failed_count,
                             "tokens": int(cum_tokens or 0),
                             "cost": float(cum_cost or 0.0),
+                            "extract_tokens": int(cum_ext_tok or 0),
+                            "extract_cost": float(cum_ext_cost or 0.0),
+                            "fix_tokens": int(cum_fix_tok or 0),
+                            "fix_cost": float(cum_fix_cost or 0.0),
+                            "audit_tokens": int(cum_aud_tok or 0),
+                            "audit_cost": float(cum_aud_cost or 0.0),
                         }
                         st.session_state.pop("verify_hitl_neo4j_load_at", None)
                         st.session_state.pop("verify_hitl_load_audit_payload", None)
@@ -796,6 +825,12 @@ The hallucinated-quote check substring-matches each `source_quote` against the s
                             failed_scenes=failed_count,
                             llm_auditors_enabled=True,
                             fdx_filename=_script_name,
+                            extract_tokens=int(cum_ext_tok or 0),
+                            extract_cost_usd=float(cum_ext_cost or 0.0),
+                            fix_tokens=int(cum_fix_tok or 0),
+                            fix_cost_usd=float(cum_fix_cost or 0.0),
+                            audit_tokens=int(cum_aud_tok or 0),
+                            audit_cost_usd=float(cum_aud_cost or 0.0),
                         )
                         if not _saved:
                             st.warning(
@@ -825,6 +860,23 @@ The hallucinated-quote check substring-matches each `source_quote` against the s
                     "Telemetry cost",
                     f"${float(_pr.get('cost', 0.0) or 0.0):.4f}",
                 )
+            s1, s2, s3, s4, s5, s6 = st.columns(6)
+            with s1:
+                st.metric("Extract tokens", f"{int(_pr.get('extract_tokens', 0) or 0):,}")
+            with s2:
+                st.metric("Fix tokens", f"{int(_pr.get('fix_tokens', 0) or 0):,}")
+            with s3:
+                st.metric("Audit tokens", f"{int(_pr.get('audit_tokens', 0) or 0):,}")
+            with s4:
+                st.metric("Extract $", f"${float(_pr.get('extract_cost', 0.0) or 0.0):.4f}")
+            with s5:
+                st.metric("Fix $", f"${float(_pr.get('fix_cost', 0.0) or 0.0):.4f}")
+            with s6:
+                st.metric("Audit $", f"${float(_pr.get('audit_cost', 0.0) or 0.0):.4f}")
+            st.caption(
+                "Token/cost **by pipeline stage** (extract → fix loops → semantic audit). "
+                "Rows should sum to totals above except for rounding."
+            )
 
             _ads = _pr.get("audit_decisions") or []
             if _ads:
@@ -1502,7 +1554,7 @@ if _active == "Pipeline Efficiency Tracking":
     st.header("Pipeline Efficiency Tracking")
     st.caption(
         "**Agentic pipeline observability:** each finished run is a **:PipelineRun** row in Neo4j (survives screenplay reloads). "
-        "Use it like production extractor metrics — **tokens**, **estimated cost**, correction/warning counts, scenes processed. "
+        "Totals plus **per-stage** extract / fix / audit tokens and estimated USD (see **strategy.md**, **Telemetry.md**). "
         "**Script Name** is the uploaded screenplay’s original filename when you used the Pipeline uploader, otherwise the on-disk pipeline target (**target_script.fdx**)."
     )
     try:
@@ -1529,14 +1581,24 @@ if _active == "Pipeline Efficiency Tracking":
             tel_tok = int(r.get("telemetry_tokens", 0) or 0)
             tel_cost = float(r.get("telemetry_cost_usd", 0) or 0)
             _fn = r.get("fdx_filename")
+            e_tok = int(r.get("extract_tokens", 0) or 0)
+            f_tok = int(r.get("fix_tokens", 0) or 0)
+            a_tok = int(r.get("audit_tokens", 0) or 0)
+            e_usd = float(r.get("extract_cost_usd", 0) or 0)
+            f_usd = float(r.get("fix_cost_usd", 0) or 0)
+            a_usd = float(r.get("audit_cost_usd", 0) or 0)
+            tver = int(r.get("telemetry_version", 0) or 0)
             display.append({
                 "Run (UTC)": str(r.get("ts", ""))[:19].replace("T", " "),
+                "Telemetry v": tver,
                 "Script Name": str(_fn).strip() if _fn else "—",
                 "Scenes extracted": f"{ext} / {tot}" if tot else str(ext),
                 "Corrections": int(r.get("corrections_count", 0) or 0),
                 "Warnings": int(r.get("warnings_count", 0) or 0),
-                "Telemetry tokens": tel_tok,
-                "Telemetry cost ($)": round(tel_cost, 4),
+                "Tokens (total)": tel_tok,
+                "Cost ($ total)": round(tel_cost, 4),
+                "Tok E / F / A": f"{e_tok:,} / {f_tok:,} / {a_tok:,}",
+                "$ E / F / A": f"{round(e_usd, 4)} / {round(f_usd, 4)} / {round(a_usd, 4)}",
                 "Failed scenes": int(r.get("failed_scenes", 0) or 0),
             })
         df = pd.DataFrame(display)

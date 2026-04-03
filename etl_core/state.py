@@ -24,6 +24,13 @@ class ETLState(TypedDict, total=False):
     lexicon_ids: list[str]
     total_tokens: int
     total_cost: float
+    # Per-stage telemetry (Phase 0 efficiency attribution; USD floats from etl_core.telemetry)
+    extract_tokens: int
+    extract_cost: float
+    fix_tokens: int
+    fix_cost: float
+    audit_tokens: int
+    audit_cost: float
 
     # Terminal
     last_error: str | None

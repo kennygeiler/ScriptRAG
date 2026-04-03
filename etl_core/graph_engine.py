@@ -73,7 +73,7 @@ def _build_extractor(bundle: DomainBundle):
             "last_error": None,
             "retry_count": int(state.get("retry_count") or 0),
         }
-        updates.update(accumulate_usage(state, **usage))
+        updates.update(accumulate_usage(state, stage="extract", **usage))
         return updates
     return _extract
 
@@ -132,7 +132,7 @@ def _build_fixer(bundle: DomainBundle):
             "last_error": None,
             "audit_trail": audit,
         }
-        updates.update(accumulate_usage(state, **usage))
+        updates.update(accumulate_usage(state, stage="fix", **usage))
         return updates
     return _fix
 
@@ -241,7 +241,7 @@ def _build_auditor(bundle: DomainBundle):
             "audit_decisions": audit_decisions_acc,
             "last_error": None,
         }
-        updates.update(accumulate_usage(state, **usage))
+        updates.update(accumulate_usage(state, stage="audit", **usage))
 
         return updates
     return _audit
@@ -312,6 +312,12 @@ def run_pipeline(
         "audit_retry_count": 0,
         "total_tokens": 0,
         "total_cost": 0.0,
+        "extract_tokens": 0,
+        "extract_cost": 0.0,
+        "fix_tokens": 0,
+        "fix_cost": 0.0,
+        "audit_tokens": 0,
+        "audit_cost": 0.0,
     })
     if state.get("last_error"):
         raise MaxRetriesError(int(state.get("retry_count") or 0), state["last_error"])

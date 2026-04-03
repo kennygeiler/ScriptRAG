@@ -56,10 +56,20 @@ def run_extraction_pipeline(
     Run extract→validate→fix→(audit) via etl_core.
 
     Returns ``(SceneGraph | None, audit_entries, error_msg | None, telemetry_dict, warnings, audit_decisions)``.
-    ``telemetry_dict`` has keys ``total_tokens`` and ``total_cost``.
+    ``telemetry_dict`` has ``total_tokens``, ``total_cost``, and per-stage
+    ``extract_tokens`` / ``fix_tokens`` / ``audit_tokens`` (+ matching ``*_cost`` USD floats).
     """
     bundle = get_bundle(lexicon_ids=lexicon_ids, enable_audit=enable_audit)
-    empty_telem = {"total_tokens": 0, "total_cost": 0.0}
+    empty_telem = {
+        "total_tokens": 0,
+        "total_cost": 0.0,
+        "extract_tokens": 0,
+        "extract_cost": 0.0,
+        "fix_tokens": 0,
+        "fix_cost": 0.0,
+        "audit_tokens": 0,
+        "audit_cost": 0.0,
+    }
     _lex_list = sorted(str(x) for x in (lexicon_ids or set()))
     try:
         state = run_pipeline(
@@ -82,6 +92,12 @@ def run_extraction_pipeline(
     telem = {
         "total_tokens": int(state.get("total_tokens", 0) or 0),
         "total_cost": float(state.get("total_cost", 0.0) or 0.0),
+        "extract_tokens": int(state.get("extract_tokens", 0) or 0),
+        "extract_cost": float(state.get("extract_cost", 0.0) or 0.0),
+        "fix_tokens": int(state.get("fix_tokens", 0) or 0),
+        "fix_cost": float(state.get("fix_cost", 0.0) or 0.0),
+        "audit_tokens": int(state.get("audit_tokens", 0) or 0),
+        "audit_cost": float(state.get("audit_cost", 0.0) or 0.0),
     }
 
     if not gj:

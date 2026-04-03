@@ -8,6 +8,8 @@ from typing import Any
 
 from neo4j import Driver
 
+from etl_core.telemetry import PIPELINE_TELEMETRY_VERSION
+
 
 def ensure_pipeline_run_schema(session: Any) -> None:
     """Idempotent constraint for PipelineRun ids (Neo4j 5+)."""
@@ -34,6 +36,13 @@ def save_pipeline_run(
     failed_scenes: int,
     llm_auditors_enabled: bool,
     fdx_filename: str = "",
+    extract_tokens: int = 0,
+    extract_cost_usd: float = 0.0,
+    fix_tokens: int = 0,
+    fix_cost_usd: float = 0.0,
+    audit_tokens: int = 0,
+    audit_cost_usd: float = 0.0,
+    telemetry_version: int = PIPELINE_TELEMETRY_VERSION,
 ) -> str:
     """Write one run record. Returns the new run id.
 
@@ -56,6 +65,13 @@ def save_pipeline_run(
                 warnings_count: toInteger($warnings_count),
                 telemetry_tokens: toInteger($telemetry_tokens),
                 telemetry_cost_usd: $telemetry_cost_usd,
+                extract_tokens: toInteger($extract_tokens),
+                extract_cost_usd: $extract_cost_usd,
+                fix_tokens: toInteger($fix_tokens),
+                fix_cost_usd: $fix_cost_usd,
+                audit_tokens: toInteger($audit_tokens),
+                audit_cost_usd: $audit_cost_usd,
+                telemetry_version: toInteger($telemetry_version),
                 failed_scenes: toInteger($failed_scenes),
                 llm_auditors_enabled: $auditors
             })
@@ -69,6 +85,13 @@ def save_pipeline_run(
             warnings_count=warnings_count,
             telemetry_tokens=telemetry_tokens,
             telemetry_cost_usd=float(telemetry_cost_usd),
+            extract_tokens=int(extract_tokens),
+            extract_cost_usd=float(extract_cost_usd),
+            fix_tokens=int(fix_tokens),
+            fix_cost_usd=float(fix_cost_usd),
+            audit_tokens=int(audit_tokens),
+            audit_cost_usd=float(audit_cost_usd),
+            telemetry_version=int(telemetry_version),
             failed_scenes=failed_scenes,
             auditors=bool(llm_auditors_enabled),
         )

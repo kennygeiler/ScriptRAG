@@ -47,6 +47,12 @@ class SceneResult:
     audit_decisions: list[dict[str, Any]] = field(default_factory=list)
     tokens: int = 0
     cost: float = 0.0
+    extract_tokens: int = 0
+    extract_cost: float = 0.0
+    fix_tokens: int = 0
+    fix_cost: float = 0.0
+    audit_tokens: int = 0
+    audit_cost: float = 0.0
     error: str | None = None
 
 
@@ -246,6 +252,12 @@ def run_single_scene_extraction(
         audit_decisions=audit_decisions,
         tokens=int(telem.get("total_tokens", 0) or 0),
         cost=float(telem.get("total_cost", 0.0) or 0.0),
+        extract_tokens=int(telem.get("extract_tokens", 0) or 0),
+        extract_cost=float(telem.get("extract_cost", 0.0) or 0.0),
+        fix_tokens=int(telem.get("fix_tokens", 0) or 0),
+        fix_cost=float(telem.get("fix_cost", 0.0) or 0.0),
+        audit_tokens=int(telem.get("audit_tokens", 0) or 0),
+        audit_cost=float(telem.get("audit_cost", 0.0) or 0.0),
     )
 
 

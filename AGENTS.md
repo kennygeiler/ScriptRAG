@@ -2,7 +2,7 @@
 
 ## Read first
 
-1. **`strategy.md`** — Architecture, metric definitions, Streamlit app behavior, strict rules for changes.
+1. **`strategy.md`** — Architecture, metric definitions, Streamlit app behavior, strict rules for changes. **`Telemetry.md`** — pipeline **`telemetry_version`** rubric and efficiency phase results log.
 2. **`MEMORY.md`** — Short current-state snapshot (tabs, metrics, pipeline).
 3. **`.cursorrules`** — Cursor-local summary; should stay consistent with `strategy.md`.
 
@@ -23,7 +23,7 @@
 | Graph load | `neo4j_loader.py`, `schema.py` |
 | Analytics | `metrics.py` |
 | UI | `app.py`, `cleanup_review.py`, `pipeline_runs.py`, `reconcile.py`, `data_out.py` |
-| ETL engine | `etl_core/graph_engine.py` (+ `etl_core/audit_policy.py`, `etl_core/state.py`), `domains/screenplay/adapter.py`, `domains/screenplay/auditors.py`, `domains/screenplay/audit_patch.py`, `domains/screenplay/audit_pipeline.py` — semantic audit **one pass**; gated **auto-apply** + HITL **warnings** (no `audit_fixer` loop) |
+| ETL engine | `etl_core/graph_engine.py` (+ `etl_core/audit_policy.py`, `etl_core/state.py`, `etl_core/telemetry.py` — per-stage **extract/fix/audit** token + $ buckets), `domains/screenplay/adapter.py`, `domains/screenplay/auditors.py`, `domains/screenplay/audit_patch.py`, `domains/screenplay/audit_pipeline.py` — semantic audit **one pass**; gated **auto-apply** + HITL **warnings** (no `audit_fixer` loop) |
 | Extract | `ingest.py` (`extract_scenes`, `run_single_scene_extraction`, `SceneResult` + `audit_decisions`), `extraction_graph.py`, `lexicon.py`, `parser.py` |
 
 ## When you finish a milestone

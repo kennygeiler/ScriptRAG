@@ -42,7 +42,7 @@ We do not infer vibes from prose alone. We map **narrative physics**: who acts o
 
 **Secrets / env:** `.env` — `ANTHROPIC_API_KEY`, `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD`. Optional **LangSmith** (`LANGCHAIN_TRACING_V2`, `LANGCHAIN_API_KEY`, `LANGCHAIN_PROJECT`) for optional trace export to LangSmith. Never commit secrets; use **`.env.example`** as a template.
 
-**Efficiency persistence:** Each completed pipeline run creates a **`:PipelineRun`** node in Neo4j (`pipeline_runs.py`). Graph wipe for reload excludes `:PipelineRun` so history survives **Approve & Load**.
+**Efficiency persistence:** Each completed pipeline run creates a **`:PipelineRun`** node in Neo4j (`pipeline_runs.py`). Graph wipe for reload excludes `:PipelineRun` so history survives **Approve & Load**. **Phase 0 (shipped):** each run and per-scene pipeline path record **extract / fix / audit** token and estimated USD buckets in LangGraph state (`etl_core/telemetry.py` `accumulate_usage` + `ETLState`), aggregated on **`PipelineRun`**, and shown in **Pipeline Efficiency Tracking** and the **Pipeline** tab summary. Each row stores **`telemetry_version`** (**0** = legacy, **1** = Phase 0 instrumentation); see **`Telemetry.md`** for the version rubric and results log.
 
 ---
 
@@ -57,10 +57,11 @@ Use this as a checklist; flip items when reality changes.
 - [x] **Neo4j loader** (merge events, entities, `IN_SCENE`, narrative edges with quotes).
 - [x] **Metrics layer** (`metrics.py`): passivity (global and windowed), scene heat, load-bearing props, possessed-unused, Act I→III Chekhov-style audit, scene inspector quotes, character `IN_SCENE` counts.
 - [x] **Scene heat refinement:** numerator = **distinct unordered conflict pairs** in-scene (not raw `CONFLICTS_WITH` edge count) to reduce dialogue-bloat skew.
-- [x] **Streamlit app** (`app.py`): **ScriptRAG** — **Pipeline** (upload FDX, **full** in-process extraction via `extract_scenes`; persists **:PipelineRun**; self-healing **corrections** including **auditor_auto_apply**), **Audit & Verify** (warnings with guidance + approve/decline; approve & load to Neo4j), **Reconcile** (`reconcile.py` scan + optional confirmed merges; ghosts + fuzzy Character/Location pairs), **Data out** (schema, recipe Cypher, CSV), **Pipeline Efficiency Tracking** (table from Neo4j; telemetry token/cost). Section navigation uses a **horizontal radio** (not `st.tabs`) so widget reruns keep the user on the same view (e.g. **Data out** recipe query).
+- [x] **Streamlit app** (`app.py`): **ScriptRAG** — **Pipeline** (upload FDX, **full** in-process extraction via `extract_scenes`; persists **:PipelineRun**; self-healing **corrections** including **auditor_auto_apply**), **Audit & Verify** (warnings with guidance + approve/decline; approve & load to Neo4j), **Reconcile** (`reconcile.py` scan + optional confirmed merges; ghosts + fuzzy Character/Location pairs), **Data out** (schema, recipe Cypher, CSV), **Pipeline Efficiency Tracking** (table from Neo4j; total + per-stage telemetry). Section navigation uses a **horizontal radio** (not `st.tabs`) so widget reruns keep the user on the same view (e.g. **Data out** recipe query).
 - [x] **Semantic audit interpret (P0–P4):** **`audit_patch`** / **`audit_pipeline`** / **`audit_policy`**, **`DomainBundle.audit_post_process`** in **`etl_core/graph_engine.py`**, **`SceneResult.audit_decisions`** and **`run_single_scene_extraction`** in **`ingest.py`**; **`run_extraction_pipeline`** returns **`audit_decisions`**.
 - [x] **Self-healing ETL pipeline:** `etl_core` LangGraph engine (extract → validate → fix loop; optional one-pass LLM audit → warnings for Verify), `ingest.py` exports `extract_scenes()` generator, Streamlit consumes it with live per-scene progress.
 - [x] **Utilities:** `tools/debug_export.py` → `graph_qa_dump.json`; `tools/qa_entities.py` → `data_health_report.json`.
+- [x] **Telemetry Phase 0 — stage attribution:** Per-stage tokens/cost (extract, fix, semantic audit) flow from LangGraph → `SceneResult` → Streamlit aggregates → `:PipelineRun` properties (`extract_*`, `fix_*`, `audit_*`) + Efficiency table / Pipeline metrics row.
 
 ### In progress / known gaps
 
@@ -90,6 +91,33 @@ These definitions are what code should implement; if code diverges, fix code or 
 | **Load-bearing props** | Props with **≥2** total **USES** or **CONFLICTS_WITH** touches (after set-dressing filter in `metrics.py`). Used in older Chekhov-style CLI audits, not the Payoff Matrix chart. |
 | **Structural load index (MET-01)** | `narrative_edge_count / max(scene_count, 1)` where **narrative edges** are relationship instances with `type(r) ∈ {INTERACTS_WITH, CONFLICTS_WITH, USES, LOCATED_IN, POSSESSES}` (both directions counted as stored in Neo4j), and **scene_count** is `count(:Event)`. Additive production-density proxy in **`metrics.py --structural-load`**; not a quality score. |
 
+### Telemetry & efficiency (authoritative KPIs and roadmap)
+
+**Purpose:** Drive down **estimated** USD and token use while preserving graph quality (verbatim `source_quote`, verification behavior).
+
+| KPI | Meaning |
+|-----|---------|
+| **$/scene** (and **$/1k script words**) | Cost normalized to workload size |
+| **Tokens / scene** | Total and split **extract vs fix vs audit** |
+| **Input vs output tokens** | Output is typically more expensive on Sonnet-class pricing (`etl_core/telemetry.py`) |
+| **LLM calls / scene** | Extract + up to `MAX_FIX_ATTEMPTS` fix + bundled audit pass(es) |
+| **Audit share** | Audit tokens ÷ total (target for Phase 2+ reduction) |
+
+**Roadmap phases**
+
+| Phase | Goal |
+|-------|------|
+| **0** | **Instrumentation** — stage buckets end-to-end (LangGraph → Neo4j `PipelineRun` → UI). **Done.** |
+| **1** | Prompt/payload shrink (scene text, system prompt, auditor JSON size, fixer context) |
+| **2** | Model routing (Haiku vs Sonnet by stage; cheaper audit) |
+| **3** | Conditional / tiered audit (skip or shorten when safe) |
+| **4** | Cache, dedup, optional batch/offline ingest |
+| **5** | Pricing table accuracy + optional invoice-grade export |
+
+**Non‑negotiable:** Do not trade away quote fidelity or parameterized Cypher safety for savings without an explicit product decision.
+
+**Versioning:** Each **`:PipelineRun`** stores **`telemetry_version`** (integer). **0** = legacy rows (missing property). **1+** = defined in **`Telemetry.md`** with a manual **results log** for phase rollouts. Bump **`PIPELINE_TELEMETRY_VERSION`** in **`etl_core/telemetry.py`** when attribution or stored fields change.
+
 ---
 
 ## 5. App map (`app.py`)
@@ -104,7 +132,7 @@ These definitions are what code should implement; if code diverges, fix code or 
 2. **Audit & Verify** — Warnings (deterministic rules + semantic audit HITL): **filter** / **sort** / **bulk Approve** (duplicates); **Approve preview**, **evidence expander**, **scene-grouped** cards, **no-auto-edit** banners; optional **per-warning notes**; **Decision log** CSV/JSON export + **last-load snapshot** (includes `neo4j_load_completed_at`). JSON path + per-warning approve/decline. "Approve & Load" → `neo4j_loader.load_entries()` (graph wipe spares `:PipelineRun`). Prior session key **`Verify`** is migrated to this label.
 3. **Reconcile** — Optional **post-load** hygiene: ghost characters + fuzzy Character/Location pairs; optional merges (`reconcile.py`). *Default order places Reconcile before Data out unless* **`SCRIPTRAG_DEMO_LAYOUT=1`** *puts Data out first.*
 4. **Data out** — Schema card, live label/relationship counts, fixed **recipe Cypher** (parameterized), CSV downloads for narrative edges / characters / events (`data_out.py`).
-5. **Pipeline Efficiency Tracking** — Reads **`:PipelineRun`** from Neo4j (telemetry tokens/cost and run metadata).
+5. **Pipeline Efficiency Tracking** — Reads **`:PipelineRun`** from Neo4j (total + extract/fix/audit token and USD breakdown, run metadata).
 
 **Sidebar:** **Reload Neo4j cache** clears `@st.cache_data`. **Reset graph data** clears the screenplay graph in Neo4j and local pipeline JSON but keeps **:PipelineRun** rows.
 
